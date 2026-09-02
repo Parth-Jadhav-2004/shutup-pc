@@ -1,0 +1,13 @@
+# Markdown
+*.md
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Local agent data
+*.log
+secrets.bin

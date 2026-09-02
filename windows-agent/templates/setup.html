@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Setup — Laptop Remote</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0d10;
+      --card: #15181e;
+      --line: #2a303c;
+      --text: #f4f6f8;
+      --muted: #8b93a1;
+      --accent: #5b8def;
+      --ok: #3ddc97;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(91, 141, 239, 0.18), transparent 50%),
+        radial-gradient(900px 500px at 100% 0%, rgba(61, 220, 151, 0.08), transparent 45%),
+        var(--bg);
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      padding: 32px 16px;
+    }
+    .card {
+      width: min(520px, 100%);
+      background: rgba(21, 24, 30, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 32px 28px 24px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+    }
+    h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.03em; }
+    h2 { margin: 24px 0 8px; font-size: 18px; }
+    p { color: var(--muted); line-height: 1.5; }
+    .name { color: var(--ok); font-weight: 600; }
+    .urls { margin-top: 12px; font-size: 13px; color: var(--muted); word-break: break-all; }
+    input {
+      width: 100%;
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      background: #1c2028;
+      color: var(--text);
+      border-radius: 14px;
+      padding: 12px;
+      font-size: 16px;
+    }
+    button {
+      margin-top: 12px;
+      border: 0;
+      background: var(--accent);
+      color: #0b0d10;
+      font-size: 15px;
+      font-weight: 700;
+      padding: 12px 18px;
+      border-radius: 14px;
+      cursor: pointer;
+    }
+    .ghost {
+      background: #1c2028;
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+    .ok { color: var(--ok); font-size: 13px; }
+    .error { color: #f43f5e; font-size: 13px; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Laptop setup</h1>
+    <p>Set the password and copy the web address. Open that address on your phone with Tailscale connected.</p>
+    <div class="name" id="device">Laptop</div>
+    <div class="urls" id="urls"></div>
+    <button class="ghost" id="copy" type="button">Copy web address</button>
+    <p><a id="webLink" href="/">Open control panel on this PC</a></p>
+
+    <h2>Permanent password</h2>
+    <p>The first password is printed in the agent window. You can replace it here anytime from this PC.</p>
+    <input id="newPassword" type="password" placeholder="New password (6+ characters)" />
+    <input id="confirmPassword" type="password" placeholder="Confirm new password" />
+    <button id="savePassword" type="button">Save password</button>
+    <p class="ok" id="passwordOk"></p>
+    <p class="error" id="passwordError"></p>
+  </main>
+  <script>
+    let remoteUrl = "";
+    async function loadStatus() {
+      const res = await fetch("/api/v1/auth/status");
+      const data = await res.json();
+      document.getElementById("device").textContent = data.device_name;
+      remoteUrl = data.remote_url || "";
+      document.getElementById("urls").innerHTML =
+        (remoteUrl
+          ? "<strong>Phone web app</strong><br>" + remoteUrl
+          : "Tailscale HTTPS is not ready") +
+        "<br><br>This PC: " + data.local_url;
+      const webLink = document.getElementById("webLink");
+      if (remoteUrl) {
+        webLink.href = remoteUrl;
+      }
+    }
+
+    document.getElementById("copy").addEventListener("click", async () => {
+      if (!remoteUrl) {
+        return;
+      }
+      await navigator.clipboard.writeText(remoteUrl);
+      document.getElementById("copy").textContent = "Copied";
+      setTimeout(() => {
+        document.getElementById("copy").textContent = "Copy web address";
+      }, 1500);
+    });
+
+    document.getElementById("savePassword").addEventListener("click", async () => {
+      const okEl = document.getElementById("passwordOk");
+      const errEl = document.getElementById("passwordError");
+      okEl.textContent = "";
+      errEl.textContent = "";
+      const next = document.getElementById("newPassword").value;
+      if (next !== document.getElementById("confirmPassword").value) {
+        errEl.textContent = "New passwords do not match.";
+        return;
+      }
+      const res = await fetch("/api/v1/auth/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        errEl.textContent = data.detail || "Could not save password.";
+        return;
+      }
+      okEl.textContent = "Password saved. Use it on the phone web app.";
+      document.getElementById("newPassword").value = "";
+      document.getElementById("confirmPassword").value = "";
+    });
+
+    loadStatus();
+  </script>
+</body>
+</html>

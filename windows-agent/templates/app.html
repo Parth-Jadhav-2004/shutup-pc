@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Laptop Remote</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0d10;
+      --card: #15181e;
+      --line: #2a303c;
+      --text: #f4f6f8;
+      --muted: #8b93a1;
+      --accent: #5b8def;
+      --ok: #3ddc97;
+      --warn: #f5a524;
+      --danger: #f43f5e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px 16px 40px;
+    }
+    main { width: min(440px, 100%); margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.03em; }
+    p, .muted { color: var(--muted); line-height: 1.5; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 20px;
+      margin-top: 16px;
+    }
+    input {
+      width: 100%;
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      background: #1c2028;
+      color: var(--text);
+      border-radius: 14px;
+      padding: 14px;
+      font-size: 16px;
+    }
+    button {
+      width: 100%;
+      margin-top: 12px;
+      border: 0;
+      border-radius: 14px;
+      min-height: 48px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .primary { background: var(--accent); color: #0b0d10; }
+    .sleep { background: #5b8def; color: #0b0d10; }
+    .lock { background: #a78bfa; color: #0b0d10; }
+    .restart { background: var(--warn); color: #0b0d10; }
+    .shutdown { background: var(--danger); color: #0b0d10; }
+    .ghost { background: #1c2028; color: var(--text); }
+    .row { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
+    .ok { color: var(--ok); font-weight: 700; }
+    .offline { color: var(--muted); }
+    .error { color: var(--danger); }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Laptop Remote</h1>
+    <p id="subtitle">Sign in with the permanent laptop password.</p>
+
+    <section id="login" class="card">
+      <label class="muted">Password</label>
+      <input id="password" type="password" autocomplete="current-password" />
+      <button class="primary" id="loginBtn" type="button">Connect</button>
+      <p class="muted">This password stays on the laptop. Set or reset it from the setup page on the PC.</p>
+      <p class="error" id="loginError"></p>
+    </section>
+
+    <section id="dashboard" class="hidden">
+      <div class="card">
+        <div class="muted">My Laptop</div>
+        <h1 id="deviceName">Laptop</h1>
+        <div id="state" class="ok">CONNECTING</div>
+        <div class="row"><span class="muted">Battery</span><span id="battery">—</span></div>
+        <div class="row"><span class="muted">CPU</span><span id="cpu">—</span></div>
+        <div class="row"><span class="muted">RAM</span><span id="ram">—</span></div>
+      </div>
+      <button class="sleep" id="sleep" type="button">Sleep</button>
+      <button class="lock" id="lock" type="button">Lock</button>
+      <button class="restart" id="restart" type="button">Restart</button>
+      <button class="shutdown" id="shutdown" type="button">Shut Down</button>
+      <button class="ghost" id="logout" type="button">Sign out on this browser</button>
+      <p class="muted" id="message"></p>
+    </section>
+  </main>
+  <script>
+    const TOKEN_KEY = "laptop-remote-token";
+    function apiRoot() {
+      const path = location.pathname.replace(/\/+$/, "") || "/";
+      if (path.endsWith("/app")) {
+        return path.slice(0, -4) || "";
+      }
+      return path === "/" ? "" : path;
+    }
+    function api(path) {
+      return apiRoot() + "/api/v1" + path;
+    }
+    async function request(path, options = {}) {
+      const token = localStorage.getItem(TOKEN_KEY);
+      const headers = { Accept: "application/json", ...(options.headers || {}) };
+      if (options.body && !headers["Content-Type"]) {
+        headers["Content-Type"] = "application/json";
+      }
+      if (token) {
+        headers.Authorization = "Bearer " + token;
+      }
+      const response = await fetch(api(path), { ...options, headers });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.detail || "Request failed");
+      }
+      return payload;
+    }
+
+    const loginEl = document.getElementById("login");
+    const dashEl = document.getElementById("dashboard");
+    const loginError = document.getElementById("loginError");
+    const message = document.getElementById("message");
+
+    function showDashboard() {
+      loginEl.classList.add("hidden");
+      dashEl.classList.remove("hidden");
+      document.getElementById("subtitle").textContent = "Controls stay available until you sign out of this browser.";
+      refresh();
+    }
+    function showLogin() {
+      dashEl.classList.add("hidden");
+      loginEl.classList.remove("hidden");
+    }
+
+    async function login() {
+      loginError.textContent = "";
+      try {
+        const result = await request("/auth/login", {
+          method: "POST",
+          body: JSON.stringify({
+            password: document.getElementById("password").value,
+            client_name: "Web",
+          }),
+        });
+        localStorage.setItem(TOKEN_KEY, result.device_token);
+        document.getElementById("deviceName").textContent = result.device_name;
+        showDashboard();
+        startStatusTimer();
+      } catch (error) {
+        loginError.textContent = error.message;
+      }
+    }
+
+    async function refresh() {
+      try {
+        const status = await request("/status");
+        document.getElementById("deviceName").textContent = status.device_name;
+        document.getElementById("state").textContent = "ONLINE";
+        document.getElementById("state").className = "ok";
+        document.getElementById("battery").textContent =
+          status.battery_percent == null ? "AC" : status.battery_percent + "%";
+        document.getElementById("cpu").textContent = Math.round(status.cpu_percent) + "%";
+        document.getElementById("ram").textContent =
+          status.ram_used_gb.toFixed(1) + " / " + status.ram_total_gb.toFixed(0) + " GB";
+      } catch (error) {
+        document.getElementById("state").textContent = "OFFLINE";
+        document.getElementById("state").className = "offline";
+        message.textContent = error.message;
+      }
+    }
+
+    async function power(command, confirmText) {
+      if (confirmText && !confirm(confirmText)) {
+        return;
+      }
+      try {
+        const result = await request("/power/" + command, { method: "POST", body: "{}" });
+        message.textContent = result.message;
+      } catch (error) {
+        message.textContent = error.message;
+      }
+    }
+
+    document.getElementById("loginBtn").addEventListener("click", login);
+    document.getElementById("password").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") login();
+    });
+    document.getElementById("sleep").addEventListener("click", () => power("sleep"));
+    document.getElementById("lock").addEventListener("click", () => power("lock"));
+    document.getElementById("restart").addEventListener("click", () =>
+      power("restart", "Restart the laptop? Open apps may close."),
+    );
+    document.getElementById("shutdown").addEventListener("click", () =>
+      power("shutdown", "Shut down the laptop? You will not be able to start it from this page."),
+    );
+    document.getElementById("logout").addEventListener("click", () => {
+      localStorage.removeItem(TOKEN_KEY);
+      showLogin();
+    });
+
+    let statusTimer = null;
+    function startStatusTimer() {
+      if (statusTimer) {
+        return;
+      }
+      statusTimer = setInterval(refresh, 15000);
+    }
+    if (localStorage.getItem(TOKEN_KEY)) {
+      showDashboard();
+      startStatusTimer();
+    }
+  </script>
+</body>
+</html>
