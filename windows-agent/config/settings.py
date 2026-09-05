@@ -6,20 +6,11 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-_PORT_FILE = Path(__file__).resolve().parent / "agent_port.txt"
-
-
-def _agent_port() -> int:
-    try:
-        return int(_PORT_FILE.read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
-        return 28471
-
 
 class Settings(BaseModel):
     agent_version: str = "1.0.0"
     host: str = "0.0.0.0"
-    port: int = _agent_port()
+    port: int = 8765
     data_dir: Path = Path(os.environ.get("LOCALAPPDATA", ".")) / "LaptopRemote"
 
     @property

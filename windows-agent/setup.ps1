@@ -14,8 +14,4 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
 Write-Host ""
 Write-Host "Windows agent is ready."
 Write-Host "Start it with start.bat"
-try {
-    & (Join-Path $Root "scripts\install_autostart.ps1")
-} catch {
-    Write-Warning "Auto-start could not be registered: $($_.Exception.Message)"
-}
+Write-Host "Optional auto-start: powershell -ExecutionPolicy Bypass -File .\scripts\install_autostart.ps1"

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 import threading
 import time
@@ -14,14 +13,11 @@ if str(ROOT) not in sys.path:
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from api.auth import router as auth_router
 from api.health import router as health_router
-from api.media import router as media_router
 from api.power import router as power_router
-from api.services import router as services_router
 from api.status import router as status_router
 from app.context import ctx
 from config.settings import settings
@@ -30,21 +26,13 @@ from services.logging_service import configure_file_logging
 APP_PAGE = (ROOT / "templates" / "app.html").read_text(encoding="utf-8")
 SETUP_PAGE = (ROOT / "templates" / "setup.html").read_text(encoding="utf-8")
 logger = configure_file_logging(settings.log_path)
-QUIET_POLL_PATHS = {"/api/v1/status", "/api/v1/media/volume"}
+QUIET_POLL_PATHS = {"/api/v1/status"}
 
 app = FastAPI(title="Laptop Remote", version=settings.agent_version)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 app.include_router(health_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(status_router, prefix="/api/v1")
 app.include_router(power_router, prefix="/api/v1")
-app.include_router(services_router, prefix="/api/v1")
-app.include_router(media_router, prefix="/api/v1")
 
 
 @app.middleware("http")
@@ -123,6 +111,7 @@ def print_banner() -> None:
 
 def run_tray() -> None:
     try:
+        import os
         import pystray
         from PIL import Image, ImageDraw
     except Exception:
@@ -151,15 +140,7 @@ def run_tray() -> None:
     pystray.Icon("LaptopRemote", image, "Laptop Remote", menu).run()
 
 
-def _ensure_stdio() -> None:
-    if sys.stdout is None:
-        sys.stdout = open(os.devnull, "w")
-    if sys.stderr is None:
-        sys.stderr = open(os.devnull, "w")
-
-
 def main() -> None:
-    _ensure_stdio()
     parser = argparse.ArgumentParser(description="Laptop Remote Windows web agent")
     parser.add_argument("--host", default=settings.host)
     parser.add_argument("--port", type=int, default=settings.port)
