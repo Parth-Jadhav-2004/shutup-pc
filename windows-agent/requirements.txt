@@ -5,5 +5,7 @@ pywin32>=308
 nvidia-ml-py>=12.570.0
 pillow>=11.0.0
 pystray>=0.19.5
+pycaw>=20240210
+comtypes>=1.4.0
 WMI>=1.5.1
 python-multipart>=0.0.12

@@ -105,10 +105,12 @@
     <p id="subtitle">Sign in with the permanent laptop password.</p>
 
     <section id="login" class="card">
+      <label class="muted">Laptop address</label>
+      <input id="apiUrl" type="url" autocomplete="off" />
       <label class="muted">Password</label>
       <input id="password" type="password" autocomplete="current-password" />
       <button class="primary" id="loginBtn" type="button">Connect</button>
-      <p class="muted">This password stays on the laptop. Set or reset it from the setup page on the PC.</p>
+      <p class="muted">Turn Tailscale on this phone first. The Windows agent on the laptop must be running.</p>
       <p class="error" id="loginError"></p>
     </section>
 
@@ -149,15 +151,22 @@
   </main>
   <script>
     const TOKEN_KEY = "laptop-remote-token";
+    const API_KEY = "laptop-remote-api";
+    const DEFAULT_API = "https://devil-1.tail1ed514.ts.net/laptop-remote";
+
+    const apiUrlInput = document.getElementById("apiUrl");
+    apiUrlInput.value = localStorage.getItem(API_KEY) || DEFAULT_API;
+
     function apiRoot() {
-      const path = location.pathname.replace(/\/+$/, "") || "/";
-      if (path.endsWith("/app")) {
-        return path.slice(0, -4) || "";
-      }
-      return path === "/" ? "" : path;
+      return (apiUrlInput.value || DEFAULT_API).trim().replace(/\/+$/, "");
     }
     function api(path) {
       return apiRoot() + "/api/v1" + path;
+    }
+    function errorText(payload, fallback) {
+      const detail = payload && payload.detail;
+      if (typeof detail === "string") return detail;
+      return fallback;
     }
     async function request(path, options = {}) {
       const token = localStorage.getItem(TOKEN_KEY);
@@ -171,7 +180,7 @@
       const response = await fetch(api(path), { ...options, headers });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(payload.detail || "Request failed");
+        throw new Error(errorText(payload, "Request failed"));
       }
       return payload;
     }
@@ -194,12 +203,13 @@
 
     async function login() {
       loginError.textContent = "";
+      localStorage.setItem(API_KEY, apiRoot());
       try {
         const result = await request("/auth/login", {
           method: "POST",
           body: JSON.stringify({
             password: document.getElementById("password").value,
-            client_name: "Web",
+            client_name: "Vercel",
           }),
         });
         localStorage.setItem(TOKEN_KEY, result.device_token);
@@ -207,7 +217,10 @@
         showDashboard();
         startStatusTimer();
       } catch (error) {
-        loginError.textContent = error.message;
+        loginError.textContent =
+          error.message === "Failed to fetch"
+            ? "Could not reach the laptop. Open Tailscale on this phone and keep the Windows agent running."
+            : error.message;
       }
     }
 
