@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Laptop Remote</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0d10;
+      --card: #15181e;
+      --line: #2a303c;
+      --text: #f4f6f8;
+      --muted: #8b93a1;
+      --accent: #5b8def;
+      --ok: #3ddc97;
+      --warn: #f5a524;
+      --danger: #f43f5e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px 16px 40px;
+    }
+    main { width: min(440px, 100%); margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.03em; }
+    p, .muted { color: var(--muted); line-height: 1.5; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 20px;
+      margin-top: 16px;
+    }
+    input {
+      width: 100%;
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      background: #1c2028;
+      color: var(--text);
+      border-radius: 14px;
+      padding: 14px;
+      font-size: 16px;
+    }
+    button {
+      width: 100%;
+      margin-top: 12px;
+      border: 0;
+      border-radius: 14px;
+      min-height: 48px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .primary { background: var(--accent); color: #0b0d10; }
+    .sleep { background: #5b8def; color: #0b0d10; }
+    .lock { background: #a78bfa; color: #0b0d10; }
+    .restart { background: var(--warn); color: #0b0d10; }
+    .shutdown { background: var(--danger); color: #0b0d10; }
+    .ghost { background: #1c2028; color: var(--text); }
+    .volume {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .volume input[type="range"] {
+      flex: 1;
+      margin: 0;
+      padding: 0;
+      min-height: 0;
+      accent-color: var(--accent);
+    }
+    .preview {
+      display: none;
+      width: 100%;
+      margin-top: 12px;
+      border-radius: 16px;
+      background: #0b0d10;
+    }
+    .preview.show { display: block; }
+    .row { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; }
+    .ok { color: var(--ok); font-weight: 700; }
+    .offline { color: var(--muted); }
+    .error { color: var(--danger); }
+    .hidden { display: none; }
+    .svc-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+    .svc-info { flex: 1; min-width: 0; }
+    .svc-name { font-weight: 700; }
+    .svc-sub { color: var(--muted); font-size: 13px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+    .dot.on { background: var(--ok); }
+    .toggle { width: auto; margin-top: 0; padding: 10px 16px; min-height: 0; flex: none; }
+    .toggle.on { background: var(--ok); color: #0b0d10; }
+    .toggle.off { background: #1c2028; color: var(--text); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Laptop Remote</h1>
+    <p id="subtitle">Sign in with the permanent laptop password.</p>
+
+    <section id="login" class="card">
+      <label class="muted">Laptop address</label>
+      <input id="apiUrl" type="url" autocomplete="off" />
+      <label class="muted">Password</label>
+      <input id="password" type="password" autocomplete="current-password" />
+      <button class="primary" id="loginBtn" type="button">Connect</button>
+      <p class="muted">Turn Tailscale on this phone first. The Windows agent on the laptop must be running.</p>
+      <p class="error" id="loginError"></p>
+    </section>
+
+    <section id="dashboard" class="hidden">
+      <div class="card">
+        <div class="muted">My Laptop</div>
+        <h1 id="deviceName">Laptop</h1>
+        <div id="state" class="ok">CONNECTING</div>
+        <div class="row"><span class="muted">Battery</span><span id="battery">—</span></div>
+        <div class="row"><span class="muted">CPU</span><span id="cpu">—</span></div>
+        <div class="row"><span class="muted">RAM</span><span id="ram">—</span></div>
+      </div>
+      <div class="card">
+        <div class="muted">Volume</div>
+        <div class="volume">
+          <input id="volume" type="range" min="0" max="100" value="50" />
+          <span id="volumeValue">—</span>
+        </div>
+        <button class="ghost" id="mute" type="button">Mute</button>
+      </div>
+      <div class="card">
+        <div class="muted">Screen</div>
+        <img id="preview" class="preview" alt="Laptop screenshot" />
+        <button class="ghost" id="screenshot" type="button">Refresh screenshot</button>
+      </div>
+      <div class="card">
+        <div class="muted">Services</div>
+        <div id="services"><div class="muted">Loading…</div></div>
+        <button class="ghost" id="servicesRefresh" type="button">Refresh services</button>
+      </div>
+      <button class="sleep" id="sleep" type="button">Sleep</button>
+      <button class="lock" id="lock" type="button">Lock</button>
+      <button class="restart" id="restart" type="button">Restart</button>
+      <button class="shutdown" id="shutdown" type="button">Shut Down</button>
+      <button class="ghost" id="logout" type="button">Sign out on this browser</button>
+      <p class="muted" id="message"></p>
+    </section>
+  </main>
+  <script>
+    const TOKEN_KEY = "laptop-remote-token";
+    const API_KEY = "laptop-remote-api";
+    const DEFAULT_API = "https://devil-1.tail1ed514.ts.net/laptop-remote";
+
+    const apiUrlInput = document.getElementById("apiUrl");
+    apiUrlInput.value = localStorage.getItem(API_KEY) || DEFAULT_API;
+
+    function apiRoot() {
+      return (apiUrlInput.value || DEFAULT_API).trim().replace(/\/+$/, "");
+    }
+    function api(path) {
+      return apiRoot() + "/api/v1" + path;
+    }
+    function errorText(payload, fallback) {
+      const detail = payload && payload.detail;
+      if (typeof detail === "string") return detail;
+      return fallback;
+    }
+    async function request(path, options = {}) {
+      const token = localStorage.getItem(TOKEN_KEY);
+      const headers = { Accept: "application/json", ...(options.headers || {}) };
+      if (options.body && !headers["Content-Type"]) {
+        headers["Content-Type"] = "application/json";
+      }
+      if (token) {
+        headers.Authorization = "Bearer " + token;
+      }
+      const response = await fetch(api(path), { ...options, headers });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(errorText(payload, "Request failed"));
+      }
+      return payload;
+    }
+
+    const loginEl = document.getElementById("login");
+    const dashEl = document.getElementById("dashboard");
+    const loginError = document.getElementById("loginError");
+    const message = document.getElementById("message");
+
+    function showDashboard() {
+      loginEl.classList.add("hidden");
+      dashEl.classList.remove("hidden");
+      document.getElementById("subtitle").textContent = "Controls stay available until you sign out of this browser.";
+      refresh();
+    }
+    function showLogin() {
+      dashEl.classList.add("hidden");
+      loginEl.classList.remove("hidden");
+    }
+
+    async function login() {
+      loginError.textContent = "";
+      localStorage.setItem(API_KEY, apiRoot());
+      try {
+        const result = await request("/auth/login", {
+          method: "POST",
+          body: JSON.stringify({
+            password: document.getElementById("password").value,
+            client_name: "Vercel",
+          }),
+        });
+        localStorage.setItem(TOKEN_KEY, result.device_token);
+        document.getElementById("deviceName").textContent = result.device_name;
+        showDashboard();
+        startStatusTimer();
+      } catch (error) {
+        loginError.textContent =
+          error.message === "Failed to fetch"
+            ? "Could not reach the laptop. Open Tailscale on this phone and keep the Windows agent running."
+            : error.message;
+      }
+    }
+
+    async function fetchBinary(path) {
+      const token = localStorage.getItem(TOKEN_KEY);
+      const headers = {};
+      if (token) {
+        headers.Authorization = "Bearer " + token;
+      }
+      const response = await fetch(api(path), { headers });
+      if (!response.ok) {
+        throw new Error("Screenshot failed");
+      }
+      return response.blob();
+    }
+
+    function applyVolume(vol) {
+      document.getElementById("volume").value = String(vol.volume_percent);
+      document.getElementById("volumeValue").textContent = vol.volume_percent + "%";
+      const muteBtn = document.getElementById("mute");
+      muteBtn.textContent = vol.muted ? "Unmute" : "Mute";
+      muteBtn.dataset.muted = vol.muted ? "1" : "0";
+    }
+
+    async function loadVolume() {
+      applyVolume(await request("/media/volume"));
+    }
+
+    async function setVolume(payload) {
+      applyVolume(await request("/media/volume", { method: "POST", body: JSON.stringify(payload) }));
+    }
+
+    let volumeTimer = null;
+    function queueVolume(percent) {
+      document.getElementById("volumeValue").textContent = percent + "%";
+      clearTimeout(volumeTimer);
+      volumeTimer = setTimeout(() => {
+        void setVolume({ volume_percent: percent }).catch((error) => {
+          message.textContent = error.message;
+        });
+      }, 180);
+    }
+
+    async function loadScreenshot() {
+      message.textContent = "Capturing…";
+      const blob = await fetchBinary("/media/screenshot");
+      const img = document.getElementById("preview");
+      if (img.dataset.url) {
+        URL.revokeObjectURL(img.dataset.url);
+      }
+      const url = URL.createObjectURL(blob);
+      img.dataset.url = url;
+      img.src = url;
+      img.classList.add("show");
+      message.textContent = "Screenshot updated";
+    }
+
+    async function refresh() {
+      try {
+        const status = await request("/status");
+        document.getElementById("deviceName").textContent = status.device_name;
+        document.getElementById("state").textContent = "ONLINE";
+        document.getElementById("state").className = "ok";
+        document.getElementById("battery").textContent =
+          status.battery_percent == null ? "AC" : status.battery_percent + "%";
+        document.getElementById("cpu").textContent = Math.round(status.cpu_percent) + "%";
+        document.getElementById("ram").textContent =
+          status.ram_used_gb.toFixed(1) + " / " + status.ram_total_gb.toFixed(0) + " GB";
+        await loadVolume();
+        await loadServices();
+      } catch (error) {
+        document.getElementById("state").textContent = "OFFLINE";
+        document.getElementById("state").className = "offline";
+        message.textContent = error.message;
+      }
+    }
+
+    function renderServices(services) {
+      const box = document.getElementById("services");
+      box.innerHTML = "";
+      for (const svc of services) {
+        const row = document.createElement("div");
+        row.className = "svc-row";
+        const dot = document.createElement("span");
+        dot.className = "dot" + (svc.running ? " on" : "");
+        const info = document.createElement("div");
+        info.className = "svc-info";
+        const port = svc.port != null ? ":" + svc.port : "";
+        const proc = svc.process_name ? " · " + svc.process_name : "";
+        info.innerHTML =
+          '<div class="svc-name"></div><div class="svc-sub"></div>';
+        info.querySelector(".svc-name").textContent = svc.name;
+        info.querySelector(".svc-sub").textContent =
+          (svc.running ? "ONLINE" : "OFFLINE") + port + proc;
+        row.appendChild(dot);
+        row.appendChild(info);
+        if (svc.controllable) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "toggle " + (svc.running ? "on" : "off");
+          btn.textContent = svc.running ? "ON" : "OFF";
+          btn.dataset.service = svc.id;
+          btn.addEventListener("click", () => toggleService(svc.id, btn));
+          row.appendChild(btn);
+        }
+        box.appendChild(row);
+      }
+    }
+
+    async function loadServices() {
+      try {
+        const result = await request("/services");
+        renderServices(result.services || []);
+      } catch (error) {
+        document.getElementById("services").innerHTML =
+          '<div class="muted">Services unavailable: ' + error.message + "</div>";
+      }
+    }
+
+    async function toggleService(serviceId, btn) {
+      if (btn) {
+        btn.disabled = true;
+      }
+      try {
+        const result = await request("/services/" + serviceId + "/toggle", {
+          method: "POST",
+          body: "{}",
+        });
+        message.textContent = result.message || "Service toggled";
+        if (result.services) {
+          renderServices(result.services);
+        } else {
+          await loadServices();
+        }
+      } catch (error) {
+        message.textContent = error.message;
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+        }
+      }
+    }
+
+    async function power(command, confirmText) {
+      if (confirmText && !confirm(confirmText)) {
+        return;
+      }
+      try {
+        const result = await request("/power/" + command, { method: "POST", body: "{}" });
+        message.textContent = result.message;
+      } catch (error) {
+        message.textContent = error.message;
+      }
+    }
+
+    document.getElementById("loginBtn").addEventListener("click", login);
+    document.getElementById("password").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") login();
+    });
+    document.getElementById("sleep").addEventListener("click", () => power("sleep"));
+    document.getElementById("lock").addEventListener("click", () => power("lock"));
+    document.getElementById("restart").addEventListener("click", () =>
+      power("restart", "Restart the laptop? Open apps may close."),
+    );
+    document.getElementById("shutdown").addEventListener("click", () =>
+      power("shutdown", "Shut down the laptop? You will not be able to start it from this page."),
+    );
+    document.getElementById("volume").addEventListener("input", (event) => {
+      queueVolume(Number(event.target.value));
+    });
+    document.getElementById("mute").addEventListener("click", () => {
+      const muted = document.getElementById("mute").dataset.muted === "1";
+      void setVolume({ muted: !muted }).catch((error) => {
+        message.textContent = error.message;
+      });
+    });
+    document.getElementById("screenshot").addEventListener("click", () => {
+      void loadScreenshot().catch((error) => {
+        message.textContent = error.message;
+      });
+    });
+    document.getElementById("servicesRefresh").addEventListener("click", () => {
+      void loadServices().catch((error) => {
+        message.textContent = error.message;
+      });
+    });
+    document.getElementById("logout").addEventListener("click", () => {
+      localStorage.removeItem(TOKEN_KEY);
+      showLogin();
+    });
+
+    let statusTimer = null;
+    function startStatusTimer() {
+      if (statusTimer) {
+        return;
+      }
+      statusTimer = setInterval(refresh, 15000);
+    }
+    if (localStorage.getItem(TOKEN_KEY)) {
+      showDashboard();
+      startStatusTimer();
+    }
+  </script>
+</body>
+</html>
