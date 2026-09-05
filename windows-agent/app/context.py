@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from config.settings import settings
 from security.token_manager import TokenManager
 from services.agent_services import AgentServices
+from services.app_service import AppService
 from services.auth_service import AuthService
 from services.media_service import MediaService
 from services.network_service import NetworkService
@@ -21,6 +22,7 @@ class AppContext:
     telemetry: TelemetryService
     media: MediaService
     services: AgentServices
+    apps: AppService
 
 
 def build_context() -> AppContext:
@@ -33,6 +35,7 @@ def build_context() -> AppContext:
         telemetry=TelemetryService(),
         media=MediaService(),
         services=AgentServices(agent_port=settings.port),
+        apps=AppService(),
     )
 
 

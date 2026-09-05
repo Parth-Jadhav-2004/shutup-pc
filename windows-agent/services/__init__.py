@@ -1,4 +1,5 @@
 from .agent_services import AgentServices
+from .app_service import AppService
 from .auth_service import AuthService
 from .media_service import MediaService
 from .network_service import NetworkService
@@ -7,6 +8,7 @@ from .telemetry_service import TelemetryService
 
 __all__ = [
     "AgentServices",
+    "AppService",
     "AuthService",
     "MediaService",
     "NetworkService",

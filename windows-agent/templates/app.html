@@ -78,6 +78,7 @@
     }
     .sw.on { background: var(--green); }
     .sw.on::after { transform: translateX(20px); }
+    .logo { width: 40px; height: 40px; border-radius: 10px; flex: none; }
     .row:disabled { opacity: 0.5; }
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 16px; }
     .stat { background: #2c2c2e; border-radius: 14px; padding: 12px 8px; text-align: center; }
@@ -132,6 +133,9 @@
 
       <div class="group-title">Hermes Agent</div>
       <div class="card" id="services"><div class="row"><div class="info"><div class="name">Loading…</div></div></div></div>
+
+      <div class="group-title">Apps</div>
+      <div class="card" id="apps"><div class="row"><div class="info"><div class="name">Loading…</div></div></div></div>
 
       <div class="group-title">Media</div>
       <div class="card">
@@ -382,6 +386,80 @@
       }
     }
 
+    function renderApps(apps) {
+      const box = document.getElementById("apps");
+      box.innerHTML = "";
+      for (const app of apps) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "row";
+        btn.setAttribute("role", "switch");
+        btn.setAttribute("aria-checked", app.running ? "true" : "false");
+        const logo = document.createElement("img");
+        logo.className = "logo";
+        logo.alt = "";
+        if (app.logo) {
+          logo.src = app.logo;
+        }
+        const name = document.createElement("div");
+        name.className = "info";
+        const title = document.createElement("div");
+        title.className = "name";
+        title.textContent = app.name;
+        const sub = document.createElement("div");
+        sub.className = "sub";
+        sub.textContent = app.running ? "Running" : "Closed";
+        name.appendChild(title);
+        name.appendChild(sub);
+        const sw = document.createElement("span");
+        sw.className = "sw" + (app.running ? " on" : "");
+        btn.appendChild(logo);
+        btn.appendChild(name);
+        btn.appendChild(sw);
+        btn.addEventListener("click", () => toggleApp(app, btn));
+        box.appendChild(btn);
+      }
+    }
+
+    async function loadApps() {
+      try {
+        const result = await request("/apps");
+        renderApps(result.apps || []);
+      } catch (error) {
+        document.getElementById("apps").innerHTML =
+          '<div class="row"><div class="info"><div class="name">Apps unavailable</div></div></div>';
+      }
+    }
+
+    async function toggleApp(app, btn) {
+      const willRun = btn.getAttribute("aria-checked") !== "true";
+      if (!willRun && !confirm("Quit " + app.name + "? Unsaved work may be lost.")) {
+        return;
+      }
+      btn.disabled = true;
+      const sw = btn.querySelector(".sw");
+      btn.setAttribute("aria-checked", willRun ? "true" : "false");
+      setSw(sw, willRun);
+      try {
+        const result = await request("/apps/" + app.id + "/toggle", {
+          method: "POST",
+          body: "{}",
+        });
+        message.textContent = result.message || "App toggled";
+        if (result.apps) {
+          renderApps(result.apps);
+        } else {
+          await loadApps();
+        }
+      } catch (error) {
+        message.textContent = error.message;
+        btn.setAttribute("aria-checked", willRun ? "false" : "true");
+        setSw(sw, !willRun);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
     async function refreshState() {
       try {
         const status = await request("/status");
@@ -408,6 +486,7 @@
         await refreshState();
         await loadVolume();
         await loadServices();
+        await loadApps();
       } catch (error) {
         /* state already shown */
       }

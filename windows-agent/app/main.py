@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from api.auth import router as auth_router
+from api.apps import router as apps_router
 from api.health import router as health_router
 from api.media import router as media_router
 from api.power import router as power_router
@@ -41,6 +42,7 @@ app.add_middleware(
 )
 app.include_router(health_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(apps_router, prefix="/api/v1")
 app.include_router(status_router, prefix="/api/v1")
 app.include_router(power_router, prefix="/api/v1")
 app.include_router(services_router, prefix="/api/v1")
