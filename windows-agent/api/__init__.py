@@ -5,6 +5,7 @@ from .media import router as media_router
 from .power import router as power_router
 from .services import router as services_router
 from .status import router as status_router
+from .throttle import router as throttle_router
 
 __all__ = [
     "apps_router",
@@ -14,4 +15,5 @@ __all__ = [
     "power_router",
     "services_router",
     "status_router",
+    "throttle_router",
 ]

@@ -5,6 +5,7 @@ from .media_service import MediaService
 from .network_service import NetworkService
 from .power_service import PowerService
 from .telemetry_service import TelemetryService
+from .throttle import ThrottleService
 
 __all__ = [
     "AgentServices",
@@ -14,4 +15,5 @@ __all__ = [
     "NetworkService",
     "PowerService",
     "TelemetryService",
+    "ThrottleService",
 ]

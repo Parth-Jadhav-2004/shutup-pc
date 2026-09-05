@@ -11,6 +11,7 @@ from services.media_service import MediaService
 from services.network_service import NetworkService
 from services.power_service import PowerService
 from services.telemetry_service import TelemetryService
+from services.throttle import ThrottleService
 
 
 @dataclass
@@ -23,6 +24,7 @@ class AppContext:
     media: MediaService
     services: AgentServices
     apps: AppService
+    throttle: ThrottleService
 
 
 def build_context() -> AppContext:
@@ -36,6 +38,7 @@ def build_context() -> AppContext:
         media=MediaService(),
         services=AgentServices(agent_port=settings.port),
         apps=AppService(),
+        throttle=ThrottleService(),
     )
 
 

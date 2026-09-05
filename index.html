@@ -103,6 +103,37 @@
     .preview.show { display: block; }
     .toast { color: var(--muted); text-align: center; min-height: 22px; font-size: 14px; margin-top: 16px; }
     .hidden { display: none; }
+    .usage-mark {
+      width: 40px; height: 40px; border-radius: 10px; flex: none;
+      display: grid; place-items: center;
+      font-size: 12px; font-weight: 800; letter-spacing: -0.2px;
+    }
+    .usage-mark.claude { background: #3b2318; color: #ff9f7a; }
+    .usage-mark.cursor { background: #2c2c2e; color: #ffffff; }
+    .usage-mark.codex { background: #10352b; color: #5eead4; }
+    .usage-mark.antigravity { background: #1b2a44; color: #8ab4f8; }
+    .usage-tile { padding: 14px 16px; }
+    .usage-tile + .usage-tile { border-top: 1px solid var(--row-line); }
+    .usage-head { display: flex; align-items: flex-start; gap: 12px; }
+    .usage-meta { flex: 1; min-width: 0; }
+    .usage-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .usage-plan { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .usage-used { font-size: 17px; font-weight: 700; }
+    .usage-used.ok { color: var(--green); }
+    .usage-used.warn { color: #eab308; }
+    .usage-used.hot { color: var(--orange); }
+    .usage-limit { margin-top: 10px; }
+    .usage-limit .lr {
+      display: flex; justify-content: space-between; gap: 8px;
+      font-size: 13px; color: var(--muted);
+    }
+    .usage-limit .lr b { color: var(--text); font-weight: 600; }
+    .usage-bar {
+      height: 6px; border-radius: 999px; background: var(--track);
+      overflow: hidden; margin-top: 6px;
+    }
+    .usage-bar > span { display: block; height: 100%; border-radius: inherit; }
+    .usage-note { font-size: 13px; color: var(--muted); margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -131,6 +162,11 @@
         <div class="stat"><b id="battery">—</b><span>Battery</span></div>
         <div class="stat"><b id="cpu">—</b><span>CPU</span></div>
         <div class="stat"><b id="ram">—</b><span>RAM</span></div>
+      </div>
+
+      <div class="group-title">Throttle</div>
+      <div class="card" id="throttle">
+        <div class="row"><div class="info"><div class="name">Loading model usage…</div></div></div>
       </div>
 
       <div class="group-title">Hermes Agent</div>
@@ -472,6 +508,144 @@
       }
     }
 
+    function usageTone(percent) {
+      if (percent == null || !Number.isFinite(Number(percent))) return "";
+      if (percent >= 70) return "hot";
+      if (percent >= 50) return "warn";
+      return "ok";
+    }
+    function usageBarColor(percent) {
+      if (percent >= 70) return "var(--orange)";
+      if (percent >= 50) return "#eab308";
+      return "var(--green)";
+    }
+    function providerMark(id) {
+      return ({ claude: "CL", cursor: "CU", codex: "CX", antigravity: "AG" })[id] || String(id).slice(0, 2).toUpperCase();
+    }
+    function renderThrottle(payload) {
+      const box = document.getElementById("throttle");
+      box.innerHTML = "";
+      const providers = payload.providers || [];
+      if (!providers.length) {
+        const empty = document.createElement("div");
+        empty.className = "row";
+        empty.innerHTML = '<div class="info"><div class="name">No usage data</div></div>';
+        box.appendChild(empty);
+        return;
+      }
+      for (const provider of providers) {
+        const tile = document.createElement("div");
+        tile.className = "usage-tile";
+        const head = document.createElement("div");
+        head.className = "usage-head";
+        const mark = document.createElement("div");
+        mark.className = "usage-mark " + provider.id;
+        mark.textContent = providerMark(provider.id);
+        const meta = document.createElement("div");
+        meta.className = "usage-meta";
+        const top = document.createElement("div");
+        top.className = "usage-top";
+        const name = document.createElement("div");
+        name.className = "name";
+        name.textContent = provider.name;
+        const used = document.createElement("div");
+        used.className = "usage-used " + usageTone(provider.used_percent);
+        used.textContent = provider.used_percent == null ? "—" : Math.round(provider.used_percent) + "%";
+        top.appendChild(name);
+        top.appendChild(used);
+        const plan = document.createElement("div");
+        plan.className = "usage-plan";
+        if (provider.status === "connected") {
+          plan.textContent = [provider.plan_type, provider.remaining_label].filter(Boolean).join(" · ") || "Connected";
+        } else if (provider.status === "disconnected") {
+          plan.textContent = "Sign in on this laptop";
+        } else {
+          plan.textContent = "Unavailable";
+        }
+        meta.appendChild(top);
+        meta.appendChild(plan);
+        head.appendChild(mark);
+        head.appendChild(meta);
+        tile.appendChild(head);
+        if (provider.status === "connected") {
+          for (const limit of provider.limits || []) {
+            const block = document.createElement("div");
+            block.className = "usage-limit";
+            const lr = document.createElement("div");
+            lr.className = "lr";
+            const label = document.createElement("span");
+            label.textContent = limit.label;
+            const pct = document.createElement("b");
+            pct.textContent = Math.round(limit.used_percent) + "% used";
+            lr.appendChild(label);
+            lr.appendChild(pct);
+            const bar = document.createElement("div");
+            bar.className = "usage-bar";
+            const fill = document.createElement("span");
+            fill.style.width = Math.round(limit.used_percent) + "%";
+            fill.style.background = usageBarColor(limit.used_percent);
+            bar.appendChild(fill);
+            block.appendChild(lr);
+            block.appendChild(bar);
+            if (limit.reset_label) {
+              const note = document.createElement("div");
+              note.className = "usage-note";
+              note.textContent = limit.reset_label;
+              block.appendChild(note);
+            }
+            tile.appendChild(block);
+          }
+        } else if (provider.error) {
+          const note = document.createElement("div");
+          note.className = "usage-note";
+          note.textContent = provider.error;
+          tile.appendChild(note);
+        }
+        box.appendChild(tile);
+      }
+      const refreshBtn = document.createElement("button");
+      refreshBtn.type = "button";
+      refreshBtn.className = "row";
+      refreshBtn.innerHTML =
+        '<div class="info"><div class="name">Refresh usage</div><div class="sub">Reads Claude, Cursor, Codex, and Antigravity sessions on this PC</div></div>';
+      refreshBtn.addEventListener("click", () => {
+        void loadThrottle(true);
+      });
+      box.appendChild(refreshBtn);
+    }
+    async function loadThrottle(force) {
+      const box = document.getElementById("throttle");
+      try {
+        if (force) {
+          message.textContent = "Refreshing model usage…";
+        }
+        const result = await request("/throttle" + (force ? "?refresh=true" : ""));
+        renderThrottle(result);
+        if (force) {
+          message.textContent = "Model usage updated";
+        }
+      } catch (error) {
+        box.innerHTML = "";
+        const row = document.createElement("div");
+        row.className = "row";
+        const info = document.createElement("div");
+        info.className = "info";
+        const name = document.createElement("div");
+        name.className = "name";
+        name.textContent = "Throttle unavailable";
+        const sub = document.createElement("div");
+        sub.className = "sub";
+        sub.textContent = error.message;
+        info.appendChild(name);
+        info.appendChild(sub);
+        row.appendChild(info);
+        box.appendChild(row);
+        if (force) {
+          message.textContent = error.message;
+        }
+      }
+    }
+
     async function refreshState() {
       try {
         const status = await request("/status");
@@ -499,6 +673,7 @@
         await loadVolume();
         await loadServices();
         await loadApps();
+        void loadThrottle();
       } catch (error) {
         /* state already shown */
       }

@@ -24,6 +24,7 @@ from api.media import router as media_router
 from api.power import router as power_router
 from api.services import router as services_router
 from api.status import router as status_router
+from api.throttle import router as throttle_router
 from app.context import ctx
 from config.settings import settings
 from services.logging_service import configure_file_logging
@@ -31,7 +32,7 @@ from services.logging_service import configure_file_logging
 APP_PAGE = (ROOT / "templates" / "app.html").read_text(encoding="utf-8")
 SETUP_PAGE = (ROOT / "templates" / "setup.html").read_text(encoding="utf-8")
 logger = configure_file_logging(settings.log_path)
-QUIET_POLL_PATHS = {"/api/v1/status", "/api/v1/media/volume"}
+QUIET_POLL_PATHS = {"/api/v1/status", "/api/v1/media/volume", "/api/v1/throttle"}
 
 app = FastAPI(title="Laptop Remote", version=settings.agent_version)
 app.add_middleware(
@@ -47,6 +48,7 @@ app.include_router(status_router, prefix="/api/v1")
 app.include_router(power_router, prefix="/api/v1")
 app.include_router(services_router, prefix="/api/v1")
 app.include_router(media_router, prefix="/api/v1")
+app.include_router(throttle_router, prefix="/api/v1")
 
 
 @app.middleware("http")
