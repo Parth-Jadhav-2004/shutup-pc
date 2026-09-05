@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "agent_port.ps1")
 
 if (-not (Get-Command tailscale -ErrorAction SilentlyContinue)) {
     Write-Warning "Tailscale is not installed. Remote HTTPS is unavailable."
@@ -11,7 +12,7 @@ if ($Status.BackendState -ne "Running") {
     exit 0
 }
 
-& tailscale serve --bg --yes --set-path /laptop-remote 8765 | Out-Null
+& tailscale serve --bg --yes --set-path /laptop-remote $AgentPort | Out-Null
 if ($LASTEXITCODE -ne 0) {
     throw "Could not configure Tailscale Serve."
 }
