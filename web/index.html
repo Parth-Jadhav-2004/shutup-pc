@@ -106,12 +106,14 @@
     .usage-mark {
       width: 40px; height: 40px; border-radius: 10px; flex: none;
       display: grid; place-items: center;
-      font-size: 12px; font-weight: 800; letter-spacing: -0.2px;
+      background: #2c2c2e;
     }
-    .usage-mark.claude { background: #3b2318; color: #ff9f7a; }
-    .usage-mark.cursor { background: #2c2c2e; color: #ffffff; }
-    .usage-mark.codex { background: #10352b; color: #5eead4; }
-    .usage-mark.antigravity { background: #1b2a44; color: #8ab4f8; }
+    .usage-mark img { width: 22px; height: 22px; display: block; object-fit: contain; }
+    .usage-mark.cursor img { width: 20px; height: 23px; }
+    .usage-mark.antigravity img { width: 20px; height: 20px; }
+    .usage-mark.claude { background: #3b2318; }
+    .usage-mark.codex { background: #10352b; }
+    .usage-mark.antigravity { background: #141414; }
     .usage-tile { padding: 14px 16px; }
     .usage-tile + .usage-tile { border-top: 1px solid var(--row-line); }
     .usage-head { display: flex; align-items: flex-start; gap: 12px; }
@@ -519,8 +521,9 @@
       if (percent >= 50) return "#eab308";
       return "var(--green)";
     }
-    function providerMark(id) {
-      return ({ claude: "CL", cursor: "CU", codex: "CX", antigravity: "AG" })[id] || String(id).slice(0, 2).toUpperCase();
+    function providerLogo(id) {
+      const files = { claude: "claude.svg", cursor: "cursor.svg", codex: "codex.svg", antigravity: "antigravity.png" };
+      return files[id] ? apiRoot() + "/assets/throttle/" + files[id] : "";
     }
     function renderThrottle(payload) {
       const box = document.getElementById("throttle");
@@ -540,7 +543,10 @@
         head.className = "usage-head";
         const mark = document.createElement("div");
         mark.className = "usage-mark " + provider.id;
-        mark.textContent = providerMark(provider.id);
+        const logo = document.createElement("img");
+        logo.alt = "";
+        logo.src = providerLogo(provider.id);
+        mark.appendChild(logo);
         const meta = document.createElement("div");
         meta.className = "usage-meta";
         const top = document.createElement("div");

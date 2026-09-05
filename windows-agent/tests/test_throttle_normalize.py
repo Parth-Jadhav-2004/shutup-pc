@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from services.throttle.antigravity import oauth_client_from_text
+from config.settings import parse_env_text
 from services.throttle.display import (
     format_cents_left,
     limits_for_provider,
@@ -231,12 +231,17 @@ class AntigravityUsageTests(unittest.TestCase):
         )
         self.assertIsNone(normalize_antigravity_usage({"groups": []})["usedPercent"])
 
-    def test_oauth_client_from_text(self) -> None:
-        parsed = oauth_client_from_text(
-            "const OAUTH_CLIENT_ID = 'example-client.apps.example.test';\n"
-            "const OAUTH_CLIENT_SECRET = 'example-secret';\n"
+
+class EnvFileTests(unittest.TestCase):
+    def test_parse_env_text(self) -> None:
+        parsed = parse_env_text(
+            "AGY_OAUTH_CLIENT_ID=example-client.apps.example.test\n"
+            "AGY_OAUTH_CLIENT_SECRET='example-secret'\n"
+            "# comment\n"
+            "EMPTY=\n"
         )
-        self.assertEqual(parsed, ("example-client.apps.example.test", "example-secret"))
+        self.assertEqual(parsed["AGY_OAUTH_CLIENT_ID"], "example-client.apps.example.test")
+        self.assertEqual(parsed["AGY_OAUTH_CLIENT_SECRET"], "example-secret")
 
 
 class DisplayTests(unittest.TestCase):

@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import json
 import os
-import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,8 +13,6 @@ from services.throttle.display import normalize_antigravity_usage
 from services.throttle.httputil import HttpError, request_json
 
 TOKEN_URL = "https://oauth2.googleapis.com/token"
-_CLIENT_ID_RE = re.compile(r"OAUTH_CLIENT_ID\s*=\s*['\"]([^'\"]+)['\"]")
-_CLIENT_SECRET_RE = re.compile(r"OAUTH_CLIENT_SECRET\s*=\s*['\"]([^'\"]+)['\"]")
 B64_PREFIX = "go-keyring-base64:"
 REFRESH_SKEW_MS = 60 * 1000
 HOSTS = (
@@ -87,37 +84,16 @@ def read_file_credential() -> str | None:
     return text or None
 
 
-def oauth_client_from_text(text: str) -> tuple[str, str] | None:
-    client_id = _CLIENT_ID_RE.search(text)
-    client_secret = _CLIENT_SECRET_RE.search(text)
-    if not client_id or not client_secret:
-        return None
-    return client_id.group(1), client_secret.group(1)
-
-
-def throttle_auth_candidates() -> list[Path]:
-    home = os.environ.get("THROTTLE_HOME")
-    values = []
-    if home:
-        values.append(Path(home) / "src" / "antigravity-auth.js")
-    values.append(Path(r"D:\throttle") / "src" / "antigravity-auth.js")
-    return values
-
-
 def load_oauth_client() -> tuple[str, str]:
-    env_id = os.environ.get("AGY_OAUTH_CLIENT_ID")
-    env_secret = os.environ.get("AGY_OAUTH_CLIENT_SECRET")
-    if env_id and env_secret:
-        return env_id, env_secret
-    for path in throttle_auth_candidates():
-        try:
-            parsed = oauth_client_from_text(path.read_text(encoding="utf-8"))
-        except OSError:
-            continue
-        if parsed:
-            return parsed
+    from config.settings import settings as _settings  # loads windows-agent/.env
+
+    _ = _settings
+    client_id = os.environ.get("AGY_OAUTH_CLIENT_ID")
+    client_secret = os.environ.get("AGY_OAUTH_CLIENT_SECRET")
+    if client_id and client_secret:
+        return client_id, client_secret
     raise RuntimeError(
-        "Antigravity token refresh needs AGY_OAUTH_CLIENT_ID and AGY_OAUTH_CLIENT_SECRET, or a local Throttle checkout."
+        "Set AGY_OAUTH_CLIENT_ID and AGY_OAUTH_CLIENT_SECRET in windows-agent/.env"
     )
 
 

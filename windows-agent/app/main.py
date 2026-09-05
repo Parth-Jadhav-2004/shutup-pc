@@ -16,6 +16,7 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from api.auth import router as auth_router
 from api.apps import router as apps_router
@@ -49,6 +50,7 @@ app.include_router(power_router, prefix="/api/v1")
 app.include_router(services_router, prefix="/api/v1")
 app.include_router(media_router, prefix="/api/v1")
 app.include_router(throttle_router, prefix="/api/v1")
+app.mount("/assets", StaticFiles(directory=ROOT / "assets"), name="assets")
 
 
 @app.middleware("http")
