@@ -14,8 +14,7 @@ WEBUI_DIR = Path(r"C:\Users\parth\hermes-webui")
 GATEWAY_VBS = HERMES_HOME / "gateway-service" / "Hermes_Gateway.vbs"
 GATEWAY_STATE = HERMES_HOME / "gateway_state.json"
 
-# Services the panel knows about. Only hermes-gateway and hermes-webui
-# are controllable; the rest are read-only status rows from the port scan.
+# Services the panel knows about. Both are controllable from the phone.
 KNOWN_SERVICES = [
     {
         "id": "hermes-gateway",
@@ -30,34 +29,6 @@ KNOWN_SERVICES = [
         "description": "Agent web UI (:8787)",
         "port": 8787,
         "controllable": True,
-    },
-    {
-        "id": "tech-briefing",
-        "name": "Tech Briefing",
-        "description": "Static server (:8765)",
-        "port": 8765,
-        "controllable": False,
-    },
-    {
-        "id": "unsloth-studio",
-        "name": "Unsloth Studio",
-        "description": "API-only (:8888)",
-        "port": 8888,
-        "controllable": False,
-    },
-    {
-        "id": "cli-proxy-api",
-        "name": "CLI Proxy API",
-        "description": "Local proxy (:8317)",
-        "port": 8317,
-        "controllable": False,
-    },
-    {
-        "id": "laptop-remote",
-        "name": "Laptop Remote",
-        "description": "This agent",
-        "port": None,  # filled from settings at runtime
-        "controllable": False,
     },
 ]
 
@@ -158,8 +129,6 @@ class AgentServices:
         items: list[dict] = []
         for spec in KNOWN_SERVICES:
             port = spec["port"]
-            if spec["id"] == "laptop-remote":
-                port = self.agent_port
             running, pid, extra = self._status(spec["id"], port)
             info: dict = {
                 "id": spec["id"],
@@ -240,6 +209,20 @@ class AgentServices:
     def _start_gateway(self) -> dict:
         if _gateway_pids():
             return {"success": True, "message": "Hermes Gateway is already running"}
+        # Preferred: the registered Hermes_Gateway scheduled task.
+        try:
+            result = subprocess.run(
+                ["schtasks", "/run", "/tn", "Hermes_Gateway"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+                creationflags=_NO_WINDOW,
+            )
+            if result.returncode == 0:
+                return {"success": True, "message": "Hermes Gateway start requested"}
+        except (OSError, subprocess.SubprocessError):
+            pass
         if GATEWAY_VBS.exists():
             subprocess.Popen(
                 ["wscript.exe", str(GATEWAY_VBS)],
