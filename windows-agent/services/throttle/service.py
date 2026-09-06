@@ -15,7 +15,7 @@ PROVIDERS = (
     {"id": "claude", "name": "Claude"},
     {"id": "cursor", "name": "Cursor"},
     {"id": "codex", "name": "Codex"},
-    {"id": "antigravity", "name": "Antigravity"},
+    {"id": "antigravity", "name": "Gemini"},
 )
 CACHE_MS = 45_000
 

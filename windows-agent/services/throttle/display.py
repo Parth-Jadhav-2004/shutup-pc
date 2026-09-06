@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -114,10 +115,52 @@ def format_reset_label(resets_at: Any, now_ms: float | None = None) -> str:
     return f"Resets in {minutes} min"
 
 
+_GEMINI_VERSION_RE = re.compile(r"(\d+)(?:\.(\d+))?")
+_GEMINI_TIER_RANK = (
+    ("ultra", 50),
+    ("pro", 40),
+    ("thinking", 30),
+    ("flash-lite", 15),
+    ("flash lite", 15),
+    ("flash", 20),
+    ("lite", 10),
+)
+
+
+def antigravity_model_score(window: dict | None) -> tuple[int, int, int, int]:
+    if not isinstance(window, dict):
+        return (0, 0, 0, 0)
+    text = f"{window.get('label') or ''} {window.get('modelId') or window.get('model_id') or ''}".lower()
+    gemini = 1 if "gemini" in text else 0
+    major = minor = 0
+    match = _GEMINI_VERSION_RE.search(text)
+    if match:
+        major = int(match.group(1))
+        minor = int(match.group(2) or 0)
+    tier = 0
+    for name, rank in _GEMINI_TIER_RANK:
+        if name in text:
+            tier = rank
+            break
+    return (major, minor, tier, gemini)
+
+
+def pick_latest_antigravity_window(windows: Any) -> dict | None:
+    candidates = [window for window in (windows or []) if isinstance(window, dict)]
+    if not candidates:
+        return None
+    named = [window for window in candidates if antigravity_model_score(window) > (0, 0, 0, 0)]
+    pool = named or candidates
+    return max(pool, key=antigravity_model_score)
+
+
 def used_percent_for_provider(provider: str, data: dict | None) -> float | None:
     if not data:
         return None
     if provider == "antigravity":
+        latest = pick_latest_antigravity_window(data.get("windows"))
+        if latest:
+            return clamp_percent(latest.get("usedPercent"))
         return clamp_percent(data.get("usedPercent"))
     if provider == "cursor":
         included = data.get("included") or {}
@@ -189,17 +232,11 @@ def limits_for_provider(provider: str, data: dict | None) -> list[dict]:
             if row
         ]
     if provider == "antigravity":
-        windows = sorted(
-            [window for window in (data.get("windows") or []) if isinstance(window, dict)],
-            key=lambda window: clamp_percent(window.get("usedPercent")) or 0.0,
-            reverse=True,
-        )
-        rows = []
-        for index, window in enumerate(windows[:8]):
-            rows.append(
-                _limit_row(window.get("label") or window.get("group") or "Quota", window, index == 0)
-            )
-        return [row for row in rows if row]
+        latest = pick_latest_antigravity_window(data.get("windows"))
+        if not latest:
+            return []
+        row = _limit_row(latest.get("label") or latest.get("group") or "Gemini", latest, True)
+        return [row] if row else []
     return []
 
 
@@ -482,12 +519,14 @@ def normalize_antigravity_usage(snapshot: Any = None) -> dict:
                     "group": group.get("name") or "Models",
                     "kind": bucket.get("kind"),
                     "label": bucket.get("label"),
+                    "modelId": bucket.get("modelId") or bucket.get("model_id"),
                     "usedPercent": used * 100.0,
                     "remainingPercent": 100.0 - used * 100.0,
                     "resetsAt": to_epoch_seconds(bucket.get("resetAt")),
                 }
             )
-    used_percent = max((window["usedPercent"] for window in windows), default=None)
+    latest = pick_latest_antigravity_window(windows)
+    used_percent = latest["usedPercent"] if latest else None
     return {
         "planType": snapshot.get("tier"),
         "account": snapshot.get("account"),

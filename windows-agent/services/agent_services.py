@@ -4,30 +4,66 @@ import json
 import os
 import socket
 import subprocess
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import psutil
 
+AGENT_ROOT = Path(__file__).resolve().parent.parent
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", r"C:\Users\parth\AppData\Local\hermes"))
 WEBUI_DIR = Path(r"C:\Users\parth\hermes-webui")
 GATEWAY_VBS = HERMES_HOME / "gateway-service" / "Hermes_Gateway.vbs"
 GATEWAY_STATE = HERMES_HOME / "gateway_state.json"
+CINEVAULT_DIR = Path(r"D:\CineVault\server")
+THROTTLE_EXES = [
+    Path(r"C:\Users\parth\AppData\Local\Programs\Throttle\Throttle.exe"),
+    Path(r"D:\Throttle\dist\win-unpacked\Throttle.exe"),
+    Path(r"D:\Throttle\dist\portable\win-unpacked\Throttle.exe"),
+]
 
-# Services the panel knows about. Both are controllable from the phone.
+# Background servers the phone can start or stop.
 KNOWN_SERVICES = [
+    {
+        "id": "pc-control",
+        "name": "PC Control",
+        "description": "This laptop control panel",
+        "port": None,
+        "logo": "/assets/services/pc-control.svg",
+        "confirm_stop": "Stop PC Control? This page will disconnect until you start it on the laptop.",
+        "controllable": True,
+    },
+    {
+        "id": "cinevault",
+        "name": "CineVault",
+        "description": "Media streaming server",
+        "port": 8000,
+        "logo": "/assets/services/cinevault.png",
+        "controllable": True,
+    },
+    {
+        "id": "throttle",
+        "name": "Throttle",
+        "description": "Model usage dock",
+        "port": None,
+        "logo": "/assets/services/throttle.png",
+        "controllable": True,
+    },
     {
         "id": "hermes-gateway",
         "name": "Hermes Gateway",
         "description": "Telegram / Discord agent gateway",
         "port": None,
+        "logo": "/assets/services/hermes.png",
         "controllable": True,
     },
     {
         "id": "hermes-webui",
         "name": "Hermes WebUI",
-        "description": "Agent web UI (:8787)",
+        "description": "Agent web UI",
         "port": 8787,
+        "logo": "/assets/services/hermes.png",
         "controllable": True,
     },
 ]
@@ -97,6 +133,73 @@ def _webui_pids() -> list[int]:
     return found
 
 
+def _cinevault_port() -> int:
+    env_path = CINEVAULT_DIR / ".env"
+    try:
+        for raw in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            if key.strip() == "PORT":
+                return int(value.strip().strip('"').strip("'") or 8000)
+    except (OSError, ValueError):
+        pass
+    return 8000
+
+
+def _cinevault_pids(port: int) -> list[int]:
+    found: list[int] = []
+    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+        try:
+            cmdline = " ".join(proc.info.get("cmdline") or [])
+            lowered = cmdline.lower()
+            if "cinevault" in lowered and ("run.py" in lowered or "uvicorn" in lowered or "app.main" in lowered):
+                found.append(int(proc.info["pid"]))
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    pid = _listener_pid(port)
+    if pid and pid not in found:
+        found.append(pid)
+    return found
+
+
+def _throttle_exe() -> Path | None:
+    for path in THROTTLE_EXES:
+        if path.exists():
+            return path
+    return None
+
+
+def _throttle_pids() -> list[int]:
+    found: list[int] = []
+    for proc in psutil.process_iter(["pid", "name", "exe"]):
+        try:
+            name = (proc.info.get("name") or "").lower()
+            exe = (proc.info.get("exe") or "").lower()
+            if name == "throttle.exe" or exe.endswith("\\throttle.exe"):
+                found.append(int(proc.info["pid"]))
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return found
+
+
+def _pc_control_python() -> Path:
+    return AGENT_ROOT / ".venv" / "Scripts" / "python.exe"
+
+
+def _spawn(cmd: list[str], cwd: Path) -> None:
+    subprocess.Popen(
+        cmd,
+        cwd=str(cwd),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        creationflags=_DETACHED | _NO_WINDOW,
+        close_fds=True,
+    )
+
+
 def _terminate_pids(pids: list[int], timeout: float = 6.0) -> int:
     stopped = 0
     procs: list[psutil.Process] = []
@@ -125,9 +228,26 @@ def _terminate_pids(pids: list[int], timeout: float = 6.0) -> int:
 class AgentServices:
     agent_port: int = 28471
 
+    def _spec(self, service_id: str) -> dict:
+        for spec in self._resolved_specs():
+            if spec["id"] == service_id:
+                return spec
+        raise ValueError(f"Unknown service '{service_id}'")
+
+    def _resolved_specs(self) -> list[dict]:
+        items = []
+        for spec in KNOWN_SERVICES:
+            item = dict(spec)
+            if item["id"] == "pc-control":
+                item["port"] = self.agent_port
+            elif item["id"] == "cinevault":
+                item["port"] = _cinevault_port()
+            items.append(item)
+        return items
+
     def list_services(self) -> list[dict]:
         items: list[dict] = []
-        for spec in KNOWN_SERVICES:
+        for spec in self._resolved_specs():
             port = spec["port"]
             running, pid, extra = self._status(spec["id"], port)
             info: dict = {
@@ -135,6 +255,8 @@ class AgentServices:
                 "name": spec["name"],
                 "description": spec["description"],
                 "port": port,
+                "logo": spec.get("logo"),
+                "confirm_stop": spec.get("confirm_stop"),
                 "controllable": spec["controllable"],
                 "running": running,
                 "pid": pid,
@@ -146,6 +268,22 @@ class AgentServices:
         return items
 
     def _status(self, service_id: str, port: int | None) -> tuple[bool, int | None, dict]:
+        if service_id == "pc-control":
+            if port is not None and _port_open(port):
+                return True, _listener_pid(port) or os.getpid(), {}
+            return True, os.getpid(), {"detail": "this panel"}
+        if service_id == "cinevault":
+            pids = _cinevault_pids(port or _cinevault_port())
+            if port is not None and _port_open(port):
+                return True, _listener_pid(port) or (pids[0] if pids else None), {}
+            if pids:
+                return True, pids[0], {"detail": "process alive, port not reachable"}
+            return False, None, {}
+        if service_id == "throttle":
+            pids = _throttle_pids()
+            if pids:
+                return True, pids[0], {}
+            return False, None, {}
         if service_id == "hermes-gateway":
             pids = _gateway_pids()
             if pids:
@@ -176,13 +314,38 @@ class AgentServices:
             return "stopped"
 
     def start(self, service_id: str) -> dict:
+        spec = self._spec(service_id)
+        running, _, _ = self._status(service_id, spec.get("port"))
+        if running:
+            return {"success": True, "message": f"{spec['name']} is already running"}
+        if service_id == "pc-control":
+            return self._start_pc_control()
+        if service_id == "cinevault":
+            return self._start_cinevault(spec.get("port") or _cinevault_port())
+        if service_id == "throttle":
+            return self._start_throttle()
         if service_id == "hermes-gateway":
             return self._start_gateway()
         if service_id == "hermes-webui":
             return self._start_webui()
-        raise ValueError(f"Service '{service_id}' is read-only and cannot be started")
+        raise ValueError(f"Service '{service_id}' cannot be started")
 
     def stop(self, service_id: str) -> dict:
+        spec = self._spec(service_id)
+        if service_id == "pc-control":
+            return self._stop_pc_control()
+        if service_id == "cinevault":
+            pids = _cinevault_pids(spec.get("port") or _cinevault_port())
+            if not pids:
+                return {"success": True, "message": "CineVault is already stopped"}
+            count = _terminate_pids(pids)
+            return {"success": True, "message": f"CineVault stopped ({count} process(es))"}
+        if service_id == "throttle":
+            pids = _throttle_pids()
+            if not pids:
+                return {"success": True, "message": "Throttle is already stopped"}
+            count = _terminate_pids(pids)
+            return {"success": True, "message": f"Throttle stopped ({count} process(es))"}
         if service_id == "hermes-gateway":
             pids = _gateway_pids()
             if not pids:
@@ -195,16 +358,50 @@ class AgentServices:
                 return {"success": True, "message": "Hermes WebUI is already stopped"}
             count = _terminate_pids(pids)
             return {"success": True, "message": f"Hermes WebUI stopped ({count} process(es))"}
-        raise ValueError(f"Service '{service_id}' is read-only and cannot be stopped")
+        raise ValueError(f"Service '{service_id}' cannot be stopped")
 
     def toggle(self, service_id: str) -> dict:
-        running, _, _ = self._status(
-            service_id,
-            8787 if service_id == "hermes-webui" else None,
-        )
+        spec = self._spec(service_id)
+        running, _, _ = self._status(service_id, spec.get("port"))
         if running:
             return self.stop(service_id)
         return self.start(service_id)
+
+    def _start_pc_control(self) -> dict:
+        python = _pc_control_python()
+        runner = AGENT_ROOT / "run.py"
+        if not python.exists() or not runner.exists():
+            raise RuntimeError("PC Control launcher not found")
+        _spawn([str(python), str(runner)], AGENT_ROOT)
+        return {"success": True, "message": "PC Control start requested"}
+
+    def _stop_pc_control(self) -> dict:
+        def halt() -> None:
+            time.sleep(0.7)
+            os._exit(0)
+
+        threading.Thread(target=halt, daemon=True).start()
+        return {"success": True, "message": "PC Control is stopping"}
+
+    def _start_cinevault(self, port: int) -> dict:
+        if _port_open(port) or _cinevault_pids(port):
+            return {"success": True, "message": "CineVault is already running"}
+        if not CINEVAULT_DIR.exists():
+            raise RuntimeError(f"CineVault directory not found: {CINEVAULT_DIR}")
+        try:
+            _spawn(["py", "-3", "run.py"], CINEVAULT_DIR)
+        except OSError:
+            _spawn(["python.exe", "run.py"], CINEVAULT_DIR)
+        return {"success": True, "message": "CineVault start requested"}
+
+    def _start_throttle(self) -> dict:
+        if _throttle_pids():
+            return {"success": True, "message": "Throttle is already running"}
+        exe = _throttle_exe()
+        if not exe:
+            raise RuntimeError("Throttle.exe was not found")
+        _spawn([str(exe)], exe.parent)
+        return {"success": True, "message": "Throttle start requested"}
 
     def _start_gateway(self) -> dict:
         if _gateway_pids():

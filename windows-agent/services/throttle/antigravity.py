@@ -157,7 +157,7 @@ def fetch_antigravity_snapshot() -> dict:
         models = payload.get("models") if isinstance(payload, dict) else None
         buckets = []
         if isinstance(models, dict):
-            for model in models.values():
+            for model_id, model in models.items():
                 if not isinstance(model, dict) or model.get("isInternal") or not model.get("displayName") or not model.get("quotaInfo"):
                     continue
                 quota = model["quotaInfo"]
@@ -169,6 +169,7 @@ def fetch_antigravity_snapshot() -> dict:
                     {
                         "kind": "model",
                         "label": model.get("displayName"),
+                        "modelId": model_id,
                         "remainingFraction": remaining,
                         "resetAt": quota.get("resetTime"),
                         "available": remaining == 1,

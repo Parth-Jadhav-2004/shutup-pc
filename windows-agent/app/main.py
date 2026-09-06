@@ -30,8 +30,8 @@ from app.context import ctx
 from config.settings import settings
 from services.logging_service import configure_file_logging
 
-APP_PAGE = (ROOT / "templates" / "app.html").read_text(encoding="utf-8")
-SETUP_PAGE = (ROOT / "templates" / "setup.html").read_text(encoding="utf-8")
+APP_PAGE = ROOT / "templates" / "app.html"
+SETUP_PAGE = ROOT / "templates" / "setup.html"
 logger = configure_file_logging(settings.log_path)
 QUIET_POLL_PATHS = {"/api/v1/status", "/api/v1/media/volume", "/api/v1/throttle"}
 
@@ -83,12 +83,12 @@ async def log_request(request: Request, call_next):
 @app.get("/", response_class=HTMLResponse)
 @app.get("/app", response_class=HTMLResponse)
 def app_page() -> str:
-    return APP_PAGE
+    return APP_PAGE.read_text(encoding="utf-8")
 
 
 @app.get("/setup", response_class=HTMLResponse)
 def setup_page() -> str:
-    return SETUP_PAGE
+    return SETUP_PAGE.read_text(encoding="utf-8")
 
 
 @app.get("/pair")

@@ -203,16 +203,25 @@ class AntigravityUsageTests(unittest.TestCase):
                         "name": "Gemini models",
                         "buckets": [
                             {
-                                "kind": "weekly",
+                                "kind": "model",
+                                "label": "Gemini 2.0 Flash",
                                 "remainingFraction": 0.92,
                                 "usedFraction": 0.08,
                                 "resetAt": "2026-09-06T18:00:00Z",
                             },
                             {
-                                "kind": "5h",
+                                "kind": "model",
+                                "label": "Gemini 2.5 Pro",
+                                "modelId": "gemini-2.5-pro",
                                 "remainingFraction": 0.4,
                                 "usedFraction": 0.6,
                                 "resetAt": "2026-08-31T18:00:00Z",
+                            },
+                            {
+                                "kind": "model",
+                                "label": "Gemini 2.5 Flash",
+                                "remainingFraction": 0.1,
+                                "usedFraction": 0.9,
                             },
                         ],
                     }
@@ -223,6 +232,10 @@ class AntigravityUsageTests(unittest.TestCase):
         self.assertEqual(result["usedPercent"], 60)
         self.assertEqual(result["windows"][0]["usedPercent"], 8)
         self.assertEqual(result["windows"][1]["remainingPercent"], 40)
+        rows = limits_for_provider("antigravity", result)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["label"], "Gemini 2.5 Pro")
+        self.assertEqual(rows[0]["used_percent"], 60)
 
     def test_available_bucket(self) -> None:
         self.assertEqual(
@@ -262,6 +275,19 @@ class DisplayTests(unittest.TestCase):
             22,
         )
         self.assertEqual(used_percent_for_provider("antigravity", {"usedPercent": 42.5}), 42.5)
+        self.assertEqual(
+            used_percent_for_provider(
+                "antigravity",
+                {
+                    "usedPercent": 90,
+                    "windows": [
+                        {"label": "Gemini 2.5 Flash", "usedPercent": 90},
+                        {"label": "Gemini 2.5 Pro", "usedPercent": 12},
+                    ],
+                },
+            ),
+            12,
+        )
 
     def test_limit_rows(self) -> None:
         rows = limits_for_provider(

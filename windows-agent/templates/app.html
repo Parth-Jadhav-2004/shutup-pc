@@ -35,6 +35,51 @@
     main { width: min(480px, 100%); margin: 0 auto; }
     .nav { display: flex; justify-content: space-between; align-items: center; margin: 8px 4px 2px; }
     .eyebrow { color: var(--muted); font-size: 13px; }
+    .nav-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .menu-btn {
+      flex: none; width: 40px; height: 40px; padding: 0;
+      border: 0; border-radius: 12px; background: var(--card); color: var(--text);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 5px; cursor: pointer;
+    }
+    .menu-btn span {
+      display: block; width: 16px; height: 1.8px; border-radius: 2px; background: currentColor;
+    }
+    .icon-btn {
+      width: 40px; height: 40px; border: 0; border-radius: 12px;
+      background: #2c2c2e; color: var(--text); font-size: 22px; cursor: pointer;
+    }
+    .scrim {
+      position: fixed; inset: 0; z-index: 40;
+      background: rgba(0, 0, 0, 0.45); opacity: 0; pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .scrim.open { opacity: 1; pointer-events: auto; }
+    .drawer {
+      position: fixed; z-index: 50; top: 0; left: 0; bottom: 0;
+      width: min(320px, 86vw); padding: calc(18px + env(safe-area-inset-top)) 12px 24px;
+      background: #161618; transform: translateX(-105%);
+      transition: transform 0.25s cubic-bezier(.22, 1, .36, 1);
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .drawer.open { transform: translateX(0); }
+    .drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 12px; }
+    .drawer-nav { display: flex; flex-direction: column; gap: 4px; }
+    .drawer-item {
+      display: flex; align-items: center; gap: 12px;
+      width: 100%; min-height: 52px; padding: 10px 12px;
+      border: 0; border-radius: 14px; background: transparent;
+      color: var(--text); font: inherit; text-align: left; cursor: pointer;
+    }
+    .drawer-item.active { background: var(--card); }
+    .drawer-item .mark {
+      width: 36px; height: 36px; border-radius: 10px; flex: none;
+      display: grid; place-items: center; background: #2c2c2e;
+    }
+    .drawer-item .mark svg { width: 18px; height: 18px; }
+    .drawer-item .info { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+    .drawer-item .name { font-size: 17px; }
+    .drawer-item .sub { font-size: 13px; color: var(--muted); margin-top: 1px; }
     h1 { margin: 0; font-size: 34px; letter-spacing: -0.5px; }
     .pill {
       font-size: 13px; font-weight: 700;
@@ -78,7 +123,7 @@
     }
     .sw.on { background: var(--green); }
     .sw.on::after { transform: translateX(20px); }
-    .logo { width: 40px; height: 40px; border-radius: 10px; flex: none; }
+    .logo { width: 40px; height: 40px; border-radius: 10px; flex: none; object-fit: cover; background: #111; }
     .row:disabled { opacity: 0.5; }
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 16px; }
     .stat { background: #2c2c2e; border-radius: 14px; padding: 12px 8px; text-align: center; }
@@ -106,14 +151,11 @@
     .usage-mark {
       width: 40px; height: 40px; border-radius: 10px; flex: none;
       display: grid; place-items: center;
-      background: #2c2c2e;
+      background: #111111;
     }
     .usage-mark img { width: 22px; height: 22px; display: block; object-fit: contain; }
     .usage-mark.cursor img { width: 20px; height: 23px; }
-    .usage-mark.antigravity img { width: 20px; height: 20px; }
-    .usage-mark.claude { background: #3b2318; }
-    .usage-mark.codex { background: #10352b; }
-    .usage-mark.antigravity { background: #141414; }
+    .usage-mark.antigravity img { width: 22px; height: 22px; }
     .usage-tile { padding: 14px 16px; }
     .usage-tile + .usage-tile { border-top: 1px solid var(--row-line); }
     .usage-head { display: flex; align-items: flex-start; gap: 12px; }
@@ -141,9 +183,14 @@
 <body>
   <main>
     <div class="nav">
-      <div>
-        <div class="eyebrow">My Laptop</div>
-        <h1 id="deviceName">Laptop</h1>
+      <div class="nav-left">
+        <button class="menu-btn hidden" id="menuBtn" type="button" aria-label="Open menu">
+          <span></span><span></span><span></span>
+        </button>
+        <div>
+          <div class="eyebrow" id="eyebrow">My Laptop</div>
+          <h1 id="deviceName">Laptop</h1>
+        </div>
       </div>
       <div id="state" class="pill">Connecting</div>
     </div>
@@ -158,74 +205,108 @@
     </section>
 
     <section id="dashboard" class="hidden">
-      <div class="card stats">
-        <div class="stat"><b id="battery">—</b><span>Battery</span></div>
-        <div class="stat"><b id="cpu">—</b><span>CPU</span></div>
-        <div class="stat"><b id="ram">—</b><span>RAM</span></div>
-      </div>
-
-      <div class="group-title">Throttle</div>
-      <div class="card" id="throttle">
-        <div class="row"><div class="info"><div class="name">Loading model usage…</div></div></div>
-      </div>
-
-      <div class="group-title">Hermes Agent</div>
-      <div class="card" id="services"><div class="row"><div class="info"><div class="name">Loading…</div></div></div></div>
-
-      <div class="group-title">Apps</div>
-      <div class="card" id="apps"><div class="row"><div class="info"><div class="name">Loading…</div></div></div></div>
-
-      <div class="group-title">Media</div>
-      <div class="card">
-        <div class="row" style="cursor: default;">
-          <div class="info">
-            <div class="name">Volume</div>
-            <input id="volume" type="range" min="0" max="100" value="50" />
-          </div>
+      <div id="view-home">
+        <div class="card stats">
+          <div class="stat"><b id="battery">—</b><span>Battery</span></div>
+          <div class="stat"><b id="cpu">—</b><span>CPU</span></div>
+          <div class="stat"><b id="ram">—</b><span>RAM</span></div>
         </div>
-        <button class="row" id="muteRow" type="button" role="switch" aria-checked="false">
-          <div class="info"><div class="name">Mute</div><div class="sub" id="volumeValue">—</div></div>
-          <span class="sw" id="muteSw"></span>
-        </button>
-        <button class="row" id="screenshotRow" type="button">
-          <div class="info"><div class="name">Screenshot</div><div class="sub">Tap to capture the laptop screen</div></div>
-          <span class="sw" id="shotSw"></span>
-        </button>
-      </div>
-      <img id="preview" class="preview" alt="Laptop screenshot" />
 
-      <div class="group-title">Power</div>
-      <div class="card">
-        <button class="row" type="button" data-power="sleep">
-          <span class="dot blue"></span>
-          <div class="info"><div class="name">Sleep</div><div class="sub">Suspend now</div></div>
-          <span class="sw"></span>
-        </button>
-        <button class="row" type="button" data-power="lock">
-          <span class="dot purple"></span>
-          <div class="info"><div class="name">Lock</div><div class="sub">Lock the workstation</div></div>
-          <span class="sw"></span>
-        </button>
-        <button class="row" type="button" data-power="restart" data-confirm="Restart the laptop? Open apps may close.">
-          <span class="dot orange"></span>
-          <div class="info"><div class="name">Restart</div><div class="sub">Reboot the laptop</div></div>
-          <span class="sw"></span>
-        </button>
-        <button class="row danger" type="button" data-power="shutdown" data-confirm="Shut down the laptop? You will not be able to start it from this page.">
-          <span class="dot red"></span>
-          <div class="info"><div class="name">Shut Down</div><div class="sub">Power off completely</div></div>
-          <span class="sw"></span>
-        </button>
+        <div class="group-title">Apps</div>
+        <div class="card" id="apps"><div class="row"><div class="info"><div class="name">Loading…</div></div></div></div>
+
+        <div class="group-title">Media</div>
+        <div class="card">
+          <div class="row" style="cursor: default;">
+            <div class="info">
+              <div class="name">Volume</div>
+              <input id="volume" type="range" min="0" max="100" value="50" />
+            </div>
+          </div>
+          <button class="row" id="muteRow" type="button" role="switch" aria-checked="false">
+            <div class="info"><div class="name">Mute</div><div class="sub" id="volumeValue">—</div></div>
+            <span class="sw" id="muteSw"></span>
+          </button>
+          <button class="row" id="screenshotRow" type="button">
+            <div class="info"><div class="name">Screenshot</div><div class="sub">Tap to capture the laptop screen</div></div>
+            <span class="sw" id="shotSw"></span>
+          </button>
+        </div>
+        <img id="preview" class="preview" alt="Laptop screenshot" />
+
+        <div class="group-title">Power</div>
+        <div class="card">
+          <button class="row" type="button" data-power="sleep">
+            <span class="dot blue"></span>
+            <div class="info"><div class="name">Sleep</div><div class="sub">Suspend now</div></div>
+            <span class="sw"></span>
+          </button>
+          <button class="row" type="button" data-power="lock">
+            <span class="dot purple"></span>
+            <div class="info"><div class="name">Lock</div><div class="sub">Lock the workstation</div></div>
+            <span class="sw"></span>
+          </button>
+          <button class="row" type="button" data-power="restart" data-confirm="Restart the laptop? Open apps may close.">
+            <span class="dot orange"></span>
+            <div class="info"><div class="name">Restart</div><div class="sub">Reboot the laptop</div></div>
+            <span class="sw"></span>
+          </button>
+          <button class="row danger" type="button" data-power="shutdown" data-confirm="Shut down the laptop? You will not be able to start it from this page.">
+            <span class="dot red"></span>
+            <div class="info"><div class="name">Shut Down</div><div class="sub">Power off completely</div></div>
+            <span class="sw"></span>
+          </button>
+        </div>
+
+        <div class="card">
+          <button class="row danger" id="logout" type="button">
+            <div class="info"><div class="name">Sign Out</div><div class="sub">Sign out on this browser</div></div>
+          </button>
+        </div>
       </div>
 
-      <div class="card">
-        <button class="row danger" id="logout" type="button">
-          <div class="info"><div class="name">Sign Out</div><div class="sub">Sign out on this browser</div></div>
-        </button>
+      <div id="view-usage" class="hidden">
+        <div class="card" id="throttle">
+          <div class="row"><div class="info"><div class="name">Loading model usage…</div></div></div>
+        </div>
+      </div>
+
+      <div id="view-services" class="hidden">
+        <div class="card" id="services"><div class="row"><div class="info"><div class="name">Loading…</div></div></div></div>
       </div>
       <p class="toast" id="message"></p>
     </section>
   </main>
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <div class="eyebrow">Menu</div>
+        <h1 style="font-size: 28px;">Laptop Remote</h1>
+      </div>
+      <button class="icon-btn" id="drawerClose" type="button" aria-label="Close menu">×</button>
+    </div>
+    <nav class="drawer-nav">
+      <button class="drawer-item active" type="button" data-view="home">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 3.2 4 10.1V21h6.2v-6.4h3.6V21H20V10.1z"/></svg>
+        </span>
+        <span class="info"><span class="name">Home</span><span class="sub">Apps, media, and power</span></span>
+      </button>
+      <button class="drawer-item" type="button" data-view="usage">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9h-2a7 7 0 1 1-7-7V3zm1 1.1V12l5.7 3.3-.9 1.6L11 13V4.1h2z"/></svg>
+        </span>
+        <span class="info"><span class="name">Usage</span><span class="sub">Claude, Cursor, Codex, Gemini</span></span>
+      </button>
+      <button class="drawer-item" type="button" data-view="services">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v3A2.5 2.5 0 0 1 17.5 12h-11A2.5 2.5 0 0 1 4 9.5zm0 8A2.5 2.5 0 0 1 6.5 12h11a2.5 2.5 0 0 1 2.5 2.5v3A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5zM7 7.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm0 8a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>
+        </span>
+        <span class="info"><span class="name">Services</span><span class="sub">Start or stop laptop servers</span></span>
+      </button>
+    </nav>
+  </aside>
   <script>
     const TOKEN_KEY = "laptop-remote-token";
     function apiRoot() {
@@ -259,20 +340,84 @@
     const dashEl = document.getElementById("dashboard");
     const loginError = document.getElementById("loginError");
     const message = document.getElementById("message");
+    const menuBtn = document.getElementById("menuBtn");
+    const drawer = document.getElementById("drawer");
+    const scrim = document.getElementById("scrim");
+    let deviceLabel = "Laptop";
+    let currentView = "home";
 
     function setSw(el, on) {
       el.classList.toggle("on", !!on);
     }
 
+    function assetUrl(path) {
+      if (!path) return "";
+      if (path.startsWith("http") || path.startsWith("data:")) return path;
+      return apiRoot() + path;
+    }
+
+    function applyChrome() {
+      const eyebrow = document.getElementById("eyebrow");
+      const title = document.getElementById("deviceName");
+      if (currentView === "usage") {
+        eyebrow.textContent = "Usage";
+        title.textContent = "Model usage";
+      } else if (currentView === "services") {
+        eyebrow.textContent = "Services";
+        title.textContent = "Servers";
+      } else {
+        eyebrow.textContent = "My Laptop";
+        title.textContent = deviceLabel;
+      }
+      document.querySelectorAll(".drawer-item").forEach((item) => {
+        item.classList.toggle("active", item.dataset.view === currentView);
+      });
+    }
+
+    function openMenu() {
+      drawer.classList.add("open");
+      scrim.classList.add("open");
+      drawer.setAttribute("aria-hidden", "false");
+    }
+    function closeMenu() {
+      const focused = document.activeElement;
+      if (focused && drawer.contains(focused) && typeof focused.blur === "function") {
+        focused.blur();
+      }
+      drawer.classList.remove("open");
+      scrim.classList.remove("open");
+      drawer.setAttribute("aria-hidden", "true");
+    }
+    function showView(name) {
+      currentView = name;
+      document.getElementById("view-home").classList.toggle("hidden", name !== "home");
+      document.getElementById("view-usage").classList.toggle("hidden", name !== "usage");
+      document.getElementById("view-services").classList.toggle("hidden", name !== "services");
+      applyChrome();
+      closeMenu();
+      if (name === "usage") {
+        void loadThrottle();
+      }
+      if (name === "services") {
+        void loadServices();
+      }
+    }
+
     function showDashboard() {
       loginEl.classList.add("hidden");
       dashEl.classList.remove("hidden");
+      menuBtn.classList.remove("hidden");
       document.getElementById("subtitle").textContent = "Controls stay available until you sign out of this browser.";
+      showView("home");
       refresh();
     }
     function showLogin() {
       dashEl.classList.add("hidden");
       loginEl.classList.remove("hidden");
+      menuBtn.classList.add("hidden");
+      closeMenu();
+      currentView = "home";
+      document.getElementById("eyebrow").textContent = "My Laptop";
     }
 
     async function login() {
@@ -286,7 +431,8 @@
           }),
         });
         localStorage.setItem(TOKEN_KEY, result.device_token);
-        document.getElementById("deviceName").textContent = result.device_name;
+        deviceLabel = result.device_name;
+        applyChrome();
         showDashboard();
         startStatusTimer();
       } catch (error) {
@@ -360,6 +506,10 @@
     function renderServices(services) {
       const box = document.getElementById("services");
       box.innerHTML = "";
+      if (!services.length) {
+        box.innerHTML = '<div class="row"><div class="info"><div class="name">No services</div></div></div>';
+        return;
+      }
       for (const svc of services) {
         const btn = document.createElement("button");
         btn.type = "button";
@@ -367,7 +517,17 @@
         btn.setAttribute("role", "switch");
         btn.setAttribute("aria-checked", svc.running ? "true" : "false");
         const port = svc.port != null ? " · :" + svc.port : "";
-        const proc = svc.process_name ? " · " + svc.process_name : "";
+        if (svc.logo) {
+          const logo = document.createElement("img");
+          logo.className = "logo";
+          logo.alt = "";
+          logo.src = assetUrl(svc.logo);
+          btn.appendChild(logo);
+        } else {
+          const dot = document.createElement("span");
+          dot.className = "dot" + (svc.running ? " on" : "");
+          btn.appendChild(dot);
+        }
         const name = document.createElement("div");
         name.className = "info";
         const title = document.createElement("div");
@@ -375,14 +535,11 @@
         title.textContent = svc.name;
         const sub = document.createElement("div");
         sub.className = "sub";
-        sub.textContent = (svc.running ? "On" : "Off") + port + proc;
+        sub.textContent = (svc.running ? "On" : "Off") + (svc.description ? " · " + svc.description : "") + port;
         name.appendChild(title);
         name.appendChild(sub);
-        const dot = document.createElement("span");
-        dot.className = "dot" + (svc.running ? " on" : "");
         const sw = document.createElement("span");
         sw.className = "sw" + (svc.running ? " on" : "");
-        btn.appendChild(dot);
         btn.appendChild(name);
         btn.appendChild(sw);
         btn.addEventListener("click", () => toggleService(svc, btn));
@@ -401,10 +558,12 @@
     }
 
     async function toggleService(svc, btn) {
+      const willRun = btn.getAttribute("aria-checked") !== "true";
+      if (!willRun && svc.confirm_stop && !confirm(svc.confirm_stop)) {
+        return;
+      }
       btn.disabled = true;
       const sw = btn.querySelector(".sw");
-      const dot = btn.querySelector(".dot");
-      const willRun = btn.getAttribute("aria-checked") !== "true";
       btn.setAttribute("aria-checked", willRun ? "true" : "false");
       setSw(sw, willRun);
       try {
@@ -413,7 +572,11 @@
           body: "{}",
         });
         message.textContent = result.message || "Service toggled";
-        await loadServices();
+        if (result.services) {
+          renderServices(result.services);
+        } else {
+          await loadServices();
+        }
         void refreshState();
       } catch (error) {
         message.textContent = error.message;
@@ -510,7 +673,7 @@
       return "var(--green)";
     }
     function providerLogo(id) {
-      const files = { claude: "claude.svg", cursor: "cursor.svg", codex: "codex.svg", antigravity: "antigravity.png" };
+      const files = { claude: "claude.svg", cursor: "cursor.svg", codex: "codex.svg", antigravity: "gemini.svg" };
       return files[id] ? apiRoot() + "/assets/throttle/" + files[id] : "";
     }
     function renderThrottle(payload) {
@@ -601,7 +764,7 @@
       refreshBtn.type = "button";
       refreshBtn.className = "row";
       refreshBtn.innerHTML =
-        '<div class="info"><div class="name">Refresh usage</div><div class="sub">Reads Claude, Cursor, Codex, and Antigravity sessions on this PC</div></div>';
+        '<div class="info"><div class="name">Refresh usage</div><div class="sub">Reads Claude, Cursor, Codex, and Gemini sessions on this PC</div></div>';
       refreshBtn.addEventListener("click", () => {
         void loadThrottle(true);
       });
@@ -643,7 +806,8 @@
     async function refreshState() {
       try {
         const status = await request("/status");
-        document.getElementById("deviceName").textContent = status.device_name;
+        deviceLabel = status.device_name;
+        applyChrome();
         const pill = document.getElementById("state");
         pill.textContent = "Online";
         pill.className = "pill on";
@@ -721,6 +885,12 @@
     document.getElementById("logout").addEventListener("click", () => {
       localStorage.removeItem(TOKEN_KEY);
       showLogin();
+    });
+    menuBtn.addEventListener("click", openMenu);
+    document.getElementById("drawerClose").addEventListener("click", closeMenu);
+    scrim.addEventListener("click", closeMenu);
+    document.querySelectorAll(".drawer-item").forEach((item) => {
+      item.addEventListener("click", () => showView(item.dataset.view));
     });
 
     let statusTimer = null;
