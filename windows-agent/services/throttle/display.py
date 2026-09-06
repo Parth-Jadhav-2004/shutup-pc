@@ -115,7 +115,7 @@ def format_reset_label(resets_at: Any, now_ms: float | None = None) -> str:
     return f"Resets in {minutes} min"
 
 
-_GEMINI_VERSION_RE = re.compile(r"(\d+)(?:\.(\d+))?")
+_GEMINI_VERSION_RE = re.compile(r"gemini[\s-]+(\d+)(?:\.(\d+))?", re.I)
 _GEMINI_TIER_RANK = (
     ("ultra", 50),
     ("pro", 40),
@@ -125,32 +125,76 @@ _GEMINI_TIER_RANK = (
     ("flash", 20),
     ("lite", 10),
 )
+_SKIP_LABEL_PARTS = {"tiered", "agent"}
 
 
-def antigravity_model_score(window: dict | None) -> tuple[int, int, int, int]:
+def pretty_antigravity_label(model_id: Any = None, display_name: Any = None) -> str:
+    text_id = str(model_id or "").strip()
+    if text_id.lower().startswith("gemini-"):
+        parts = [part for part in text_id.replace("_", "-").split("-") if part and part.lower() not in _SKIP_LABEL_PARTS]
+        titled = []
+        for part in parts:
+            if part.lower() == "gemini":
+                titled.append("Gemini")
+            elif part.replace(".", "", 1).isdigit():
+                titled.append(part)
+            else:
+                titled.append("Lite" if part.lower() == "lite" else part.capitalize())
+        if titled:
+            return " ".join(titled)
+    name = str(display_name or "").strip()
+    if name:
+        return name
+    return "Gemini"
+
+
+def _window_text(window: dict | None) -> str:
     if not isinstance(window, dict):
-        return (0, 0, 0, 0)
-    text = f"{window.get('label') or ''} {window.get('modelId') or window.get('model_id') or ''}".lower()
+        return ""
+    return f"{window.get('modelId') or window.get('model_id') or ''} {window.get('label') or ''}".lower()
+
+
+def antigravity_model_score(window: dict | None) -> tuple[int, int, int, int, int, int, int]:
+    if not isinstance(window, dict):
+        return (0, 0, 0, 0, 0, 0, 0)
+    text = _window_text(window)
     gemini = 1 if "gemini" in text else 0
     major = minor = 0
     match = _GEMINI_VERSION_RE.search(text)
     if match:
         major = int(match.group(1))
         minor = int(match.group(2) or 0)
+    image = 0 if "image" in text else 1
+    lite = 0 if "lite" in text else 1
     tier = 0
     for name, rank in _GEMINI_TIER_RANK:
         if name in text:
             tier = rank
             break
-    return (major, minor, tier, gemini)
+    variant = 0
+    if "tiered" in text:
+        variant = 5
+    elif re.search(r"\bhigh\b", text):
+        variant = 4
+    elif re.search(r"\bmedium\b", text):
+        variant = 3
+    elif re.search(r"\blow\b", text):
+        variant = 2
+    return (gemini, major, minor, image, lite, tier, variant)
 
 
-def pick_latest_antigravity_window(windows: Any) -> dict | None:
+def pick_latest_antigravity_window(windows: Any, preferred_ids: Any = None) -> dict | None:
     candidates = [window for window in (windows or []) if isinstance(window, dict)]
     if not candidates:
         return None
-    named = [window for window in candidates if antigravity_model_score(window) > (0, 0, 0, 0)]
-    pool = named or candidates
+    preferred = {str(item) for item in (preferred_ids or []) if item}
+    if preferred:
+        matched = [window for window in candidates if str(window.get("modelId") or window.get("model_id") or "") in preferred]
+        if matched:
+            return max(matched, key=antigravity_model_score)
+    gemini = [window for window in candidates if "gemini" in _window_text(window)]
+    usable = [window for window in gemini if "image" not in _window_text(window)]
+    pool = usable or gemini or [window for window in candidates if antigravity_model_score(window) > (0, 0, 0, 0, 0, 0, 0)] or candidates
     return max(pool, key=antigravity_model_score)
 
 
@@ -158,7 +202,7 @@ def used_percent_for_provider(provider: str, data: dict | None) -> float | None:
     if not data:
         return None
     if provider == "antigravity":
-        latest = pick_latest_antigravity_window(data.get("windows"))
+        latest = pick_latest_antigravity_window(data.get("windows"), data.get("preferredFlashIds"))
         if latest:
             return clamp_percent(latest.get("usedPercent"))
         return clamp_percent(data.get("usedPercent"))
@@ -232,7 +276,7 @@ def limits_for_provider(provider: str, data: dict | None) -> list[dict]:
             if row
         ]
     if provider == "antigravity":
-        latest = pick_latest_antigravity_window(data.get("windows"))
+        latest = pick_latest_antigravity_window(data.get("windows"), data.get("preferredFlashIds"))
         if not latest:
             return []
         row = _limit_row(latest.get("label") or latest.get("group") or "Gemini", latest, True)
@@ -514,24 +558,27 @@ def normalize_antigravity_usage(snapshot: Any = None) -> dict:
                 used = reported_used if reported_used is not None else (None if remaining is None else 1.0 - remaining)
             if used is None:
                 continue
+            model_id = bucket.get("modelId") or bucket.get("model_id")
             windows.append(
                 {
                     "group": group.get("name") or "Models",
                     "kind": bucket.get("kind"),
-                    "label": bucket.get("label"),
-                    "modelId": bucket.get("modelId") or bucket.get("model_id"),
+                    "label": pretty_antigravity_label(model_id, bucket.get("label")),
+                    "modelId": model_id,
                     "usedPercent": used * 100.0,
                     "remainingPercent": 100.0 - used * 100.0,
                     "resetsAt": to_epoch_seconds(bucket.get("resetAt")),
                 }
             )
-    latest = pick_latest_antigravity_window(windows)
+    preferred = snapshot.get("preferredFlashIds") or snapshot.get("tieredFlashIds")
+    latest = pick_latest_antigravity_window(windows, preferred)
     used_percent = latest["usedPercent"] if latest else None
     return {
         "planType": snapshot.get("tier"),
         "account": snapshot.get("account"),
         "source": snapshot.get("source"),
         "usedPercent": used_percent,
+        "preferredFlashIds": list(preferred or []),
         "windows": windows,
     }
 

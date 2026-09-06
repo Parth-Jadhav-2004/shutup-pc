@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from services.throttle.display import normalize_antigravity_usage
+from services.throttle.display import normalize_antigravity_usage, pretty_antigravity_label
 from services.throttle.httputil import HttpError, request_json
 
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -133,6 +133,76 @@ def get_antigravity_access_token() -> str:
     return credential["accessToken"]
 
 
+def _iter_models(models: Any):
+    if isinstance(models, dict):
+        yield from models.items()
+    elif isinstance(models, list):
+        for model in models:
+            if not isinstance(model, dict):
+                continue
+            model_id = model.get("id") or model.get("name") or model.get("modelId") or ""
+            yield str(model_id), model
+
+
+def _quota_remaining(quota: Any) -> float | None:
+    if not isinstance(quota, dict):
+        return None
+    for key in ("remainingFraction", "remaining_fraction"):
+        try:
+            return float(quota[key])
+        except (TypeError, ValueError, KeyError):
+            continue
+    remaining = quota.get("remaining")
+    if isinstance(remaining, dict):
+        for key in ("remainingFraction", "remaining_fraction", "value"):
+            try:
+                return float(remaining[key])
+            except (TypeError, ValueError, KeyError):
+                continue
+    return None
+
+
+def buckets_from_models(models: Any) -> list[dict]:
+    buckets = []
+    for model_id, model in _iter_models(models):
+        if not isinstance(model, dict) or model.get("isInternal"):
+            continue
+        if str(model_id).startswith(("tab_", "chat_")):
+            continue
+        quota = model.get("quotaInfo")
+        if not isinstance(quota, dict):
+            continue
+        remaining = _quota_remaining(quota)
+        if remaining is None:
+            remaining = 0.0
+        remaining = min(1.0, max(0.0, remaining))
+        buckets.append(
+            {
+                "kind": "model",
+                "label": pretty_antigravity_label(model_id, model.get("displayName")),
+                "modelId": model_id,
+                "remainingFraction": remaining,
+                "resetAt": quota.get("resetTime") or quota.get("resetAt"),
+                "available": remaining == 1,
+            }
+        )
+    return buckets
+
+
+def preferred_flash_ids(payload: Any) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    tiered = payload.get("tieredModelIds")
+    if not isinstance(tiered, dict):
+        return []
+    flash = tiered.get("flash")
+    if isinstance(flash, str) and flash:
+        return [flash]
+    if isinstance(flash, list):
+        return [str(item) for item in flash if item]
+    return []
+
+
 def fetch_antigravity_snapshot() -> dict:
     access_token = get_antigravity_access_token()
     last_error: Exception | None = None
@@ -155,26 +225,7 @@ def fetch_antigravity_snapshot() -> dict:
                 raise
             continue
         models = payload.get("models") if isinstance(payload, dict) else None
-        buckets = []
-        if isinstance(models, dict):
-            for model_id, model in models.items():
-                if not isinstance(model, dict) or model.get("isInternal") or not model.get("displayName") or not model.get("quotaInfo"):
-                    continue
-                quota = model["quotaInfo"]
-                try:
-                    remaining = float(quota.get("remainingFraction"))
-                except (TypeError, ValueError):
-                    continue
-                buckets.append(
-                    {
-                        "kind": "model",
-                        "label": model.get("displayName"),
-                        "modelId": model_id,
-                        "remainingFraction": remaining,
-                        "resetAt": quota.get("resetTime"),
-                        "available": remaining == 1,
-                    }
-                )
+        buckets = buckets_from_models(models)
         if not buckets:
             last_error = RuntimeError("Antigravity returned no model quota")
             continue
@@ -184,6 +235,7 @@ def fetch_antigravity_snapshot() -> dict:
             "fetchedAt": datetime.now(timezone.utc).isoformat(),
             "source": "api",
             "host": host,
+            "preferredFlashIds": preferred_flash_ids(payload),
             "groups": [{"name": "Antigravity models", "models": "", "buckets": buckets}],
         }
     raise last_error or RuntimeError("Unable to read Antigravity usage")

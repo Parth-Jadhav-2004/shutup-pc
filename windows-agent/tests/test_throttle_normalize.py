@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from config.settings import parse_env_text
+from services.throttle.antigravity import buckets_from_models
 from services.throttle.display import (
     format_cents_left,
     limits_for_provider,
@@ -17,6 +18,7 @@ from services.throttle.display import (
     normalize_claude_usage,
     normalize_cursor_usage,
     normalize_rate_limits,
+    pretty_antigravity_label,
     prettify_tier,
     to_epoch_seconds,
     used_percent_for_provider,
@@ -243,6 +245,84 @@ class AntigravityUsageTests(unittest.TestCase):
             0,
         )
         self.assertIsNone(normalize_antigravity_usage({"groups": []})["usedPercent"])
+
+    def test_latest_gemini_flash_not_gpt_or_older_pro(self) -> None:
+        result = normalize_antigravity_usage(
+            {
+                "preferredFlashIds": ["gemini-3.8-flash-tiered"],
+                "groups": [
+                    {
+                        "name": "Antigravity models",
+                        "buckets": [
+                            {
+                                "kind": "model",
+                                "label": "GPT-OSS 120B (Medium)",
+                                "modelId": "gpt-oss-120b-medium",
+                                "remainingFraction": 1,
+                            },
+                            {
+                                "kind": "model",
+                                "label": "Claude Sonnet 4.6 (Thinking)",
+                                "modelId": "claude-sonnet-4-6",
+                                "remainingFraction": 0.4,
+                            },
+                            {
+                                "kind": "model",
+                                "label": "Gemini 3.1 Pro (High)",
+                                "modelId": "gemini-3.1-pro-high",
+                                "remainingFraction": 0.2,
+                            },
+                            {
+                                "kind": "model",
+                                "modelId": "gemini-3.8-flash-tiered",
+                                "remainingFraction": 0.73,
+                            },
+                            {
+                                "kind": "model",
+                                "label": "Gemini 3.6 Flash (High)",
+                                "modelId": "gemini-3.6-flash-high",
+                                "remainingFraction": 0.5,
+                            },
+                        ],
+                    }
+                ],
+            }
+        )
+        self.assertEqual(result["usedPercent"], 27)
+        rows = limits_for_provider("antigravity", result)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["label"], "Gemini 3.8 Flash")
+        self.assertEqual(rows[0]["used_percent"], 27)
+        self.assertEqual(
+            used_percent_for_provider("antigravity", result),
+            27,
+        )
+
+    def test_pretty_label_from_tiered_id(self) -> None:
+        self.assertEqual(pretty_antigravity_label("gemini-3.8-flash-tiered", None), "Gemini 3.8 Flash")
+
+    def test_buckets_keep_tiered_flash_without_display_name(self) -> None:
+        buckets = buckets_from_models(
+            {
+                "gpt-oss-120b-medium": {
+                    "displayName": "GPT-OSS 120B (Medium)",
+                    "quotaInfo": {"remainingFraction": 1, "resetTime": "2026-09-06T18:00:00Z"},
+                },
+                "gemini-3.8-flash-tiered": {
+                    "quotaInfo": {"remainingFraction": 0.73, "resetTime": "2026-09-06T18:00:00Z"},
+                    "recommended": True,
+                },
+                "chat_20706": {
+                    "isInternal": True,
+                    "quotaInfo": {"remainingFraction": 1},
+                },
+            },
+        )
+        ids = [bucket["modelId"] for bucket in buckets]
+        self.assertIn("gemini-3.8-flash-tiered", ids)
+        self.assertNotIn("chat_20706", ids)
+        flash = next(bucket for bucket in buckets if bucket["modelId"] == "gemini-3.8-flash-tiered")
+        self.assertEqual(flash["label"], "Gemini 3.8 Flash")
 
 
 class EnvFileTests(unittest.TestCase):
