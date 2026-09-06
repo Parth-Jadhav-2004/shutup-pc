@@ -125,10 +125,26 @@
     .sw.on::after { transform: translateX(20px); }
     .logo { width: 40px; height: 40px; border-radius: 10px; flex: none; object-fit: cover; background: #111; }
     .row:disabled { opacity: 0.5; }
-    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 16px; }
-    .stat { background: #2c2c2e; border-radius: 14px; padding: 12px 8px; text-align: center; }
-    .stat b { font-size: 20px; display: block; }
-    .stat span { font-size: 12px; color: var(--muted); }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 16px; }
+    .stat {
+      background: #2c2c2e; border-radius: 14px; padding: 12px 6px 10px;
+      min-width: 0; min-height: 108px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 6px; text-align: center;
+    }
+    .stat-icon {
+      width: 28px; height: 28px; border-radius: 8px; flex: none;
+      display: grid; place-items: center;
+    }
+    .stat-icon svg { width: 16px; height: 16px; display: block; }
+    .stat-icon.battery { background: rgba(48, 209, 88, 0.18); color: var(--green); }
+    .stat-icon.cpu { background: rgba(10, 132, 255, 0.18); color: var(--blue); }
+    .stat-icon.ram { background: rgba(191, 90, 242, 0.18); color: var(--purple); }
+    .stat b {
+      font-size: 18px; display: block; line-height: 1.15; letter-spacing: -0.3px;
+      white-space: nowrap; font-variant-numeric: tabular-nums;
+    }
+    .stat span.stat-label { font-size: 12px; color: var(--muted); line-height: 1.2; }
     label.f-label { display: block; color: var(--muted); font-size: 13px; margin: 10px 2px 0; }
     input[type="password"], input[type="url"] {
       width: 100%; margin-top: 6px;
@@ -207,9 +223,27 @@
     <section id="dashboard" class="hidden">
       <div id="view-home">
         <div class="card stats">
-          <div class="stat"><b id="battery">—</b><span>Battery</span></div>
-          <div class="stat"><b id="cpu">—</b><span>CPU</span></div>
-          <div class="stat"><b id="ram">—</b><span>RAM</span></div>
+          <div class="stat">
+            <span class="stat-icon battery" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M16.5 7.25H5.75A2.75 2.75 0 0 0 3 10v4a2.75 2.75 0 0 0 2.75 2.75H16.5A2.75 2.75 0 0 0 19.25 14v-.75H20.5a.75.75 0 0 0 .75-.75v-1a.75.75 0 0 0-.75-.75h-1.25V10A2.75 2.75 0 0 0 16.5 7.25Zm-1.25 2.5v4.5H6.25v-4.5h9Z"/></svg>
+            </span>
+            <b id="battery">—</b>
+            <span class="stat-label">Battery</span>
+          </div>
+          <div class="stat">
+            <span class="stat-icon cpu" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M9 3.75h1.5V6H9zm4.5 0H15V6h-1.5zM9 18h1.5v2.25H9zm4.5 0H15v2.25h-1.5zM3.75 9H6v1.5H3.75zm0 4.5H6V15H3.75zM18 9h2.25v1.5H18zm0 4.5h2.25V15H18zM8.25 8.25h7.5v7.5h-7.5zm1.8 1.8v3.9h3.9v-3.9z"/></svg>
+            </span>
+            <b id="cpu">—</b>
+            <span class="stat-label">CPU</span>
+          </div>
+          <div class="stat">
+            <span class="stat-icon ram" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4.75 7.5h14.5A1.75 1.75 0 0 1 21 9.25v6.5A1.75 1.75 0 0 1 19.25 17.5h-1.5v1.25h-1.5V17.5h-2.5v1.25h-1.5V17.5h-2.5v1.25H8.25V17.5h-2.5v1.25H4.25V17.5h-.5A1.75 1.75 0 0 1 2 15.75v-6.5A1.75 1.75 0 0 1 3.75 7.5H4.75Zm1.5 2.25v4.5h11.5v-4.5Z"/></svg>
+            </span>
+            <b id="ram">—</b>
+            <span class="stat-label">RAM</span>
+          </div>
         </div>
 
         <div class="group-title">Apps</div>
@@ -815,7 +849,7 @@
           status.battery_percent == null ? "AC" : status.battery_percent + "%";
         document.getElementById("cpu").textContent = Math.round(status.cpu_percent) + "%";
         document.getElementById("ram").textContent =
-          status.ram_used_gb.toFixed(1) + " / " + status.ram_total_gb.toFixed(0) + " GB";
+          status.ram_used_gb.toFixed(1) + "/" + status.ram_total_gb.toFixed(0);
       } catch (error) {
         const pill = document.getElementById("state");
         pill.textContent = "Offline";
