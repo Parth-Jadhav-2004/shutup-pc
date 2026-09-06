@@ -828,10 +828,14 @@
     async function refresh() {
       try {
         await refreshState();
-        await loadVolume();
-        await loadServices();
-        await loadApps();
-        void loadThrottle();
+        if (currentView === "home") {
+          await loadVolume();
+          await loadApps();
+        } else if (currentView === "usage") {
+          void loadThrottle();
+        } else if (currentView === "services") {
+          await loadServices();
+        }
       } catch (error) {
         /* state already shown */
       }
