@@ -123,6 +123,27 @@
     }
     .sw.on { background: var(--green); }
     .sw.on::after { transform: translateX(20px); }
+    .mini-btn {
+      flex: none; border: 0; border-radius: 999px;
+      min-height: 34px; padding: 0 14px;
+      background: var(--blue); color: #fff;
+      font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+    }
+    .mini-btn:disabled { opacity: 0.55; cursor: wait; }
+    .mini-btn.danger { background: var(--red); }
+    .mark-icon {
+      width: 36px; height: 36px; border-radius: 10px; flex: none;
+      display: grid; place-items: center; background: #2c2c2e; color: var(--text);
+    }
+    .mark-icon svg { width: 18px; height: 18px; display: block; }
+    .mark-icon.camera { background: rgba(10, 132, 255, 0.18); color: var(--blue); }
+    .chev {
+      flex: none; width: 8px; height: 8px; margin-right: 4px;
+      border-top: 2.2px solid #636366; border-right: 2.2px solid #636366;
+      transform: rotate(45deg);
+    }
+    .row.shot-row { cursor: default; align-items: center; }
+    .row.busy { opacity: 0.55; }
     .logo { width: 40px; height: 40px; border-radius: 10px; flex: none; object-fit: cover; background: #111; }
     .row:disabled { opacity: 0.5; }
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 16px; }
@@ -160,7 +181,7 @@
     .hint { color: var(--muted); font-size: 14px; line-height: 1.5; }
     .error { color: var(--red); font-size: 14px; }
     input[type="range"] { width: 100%; accent-color: var(--blue); height: 36px; margin: 4px 0 0; }
-    .preview { display: none; width: calc(100% - 32px); margin: 4px 16px 14px; border-radius: 12px; }
+    .preview { display: none; width: calc(100% - 32px); margin: 0 16px 16px; border-radius: 12px; }
     .preview.show { display: block; }
     .toast { color: var(--muted); text-align: center; min-height: 22px; font-size: 14px; margin-top: 16px; }
     .hidden { display: none; }
@@ -266,34 +287,40 @@
             <div class="info"><div class="name">Mute</div><div class="sub" id="volumeValue">—</div></div>
             <span class="sw" id="muteSw"></span>
           </button>
-          <button class="row" id="screenshotRow" type="button">
-            <div class="info"><div class="name">Screenshot</div><div class="sub">Tap to capture the laptop screen</div></div>
-            <span class="sw" id="shotSw"></span>
-          </button>
+          <div class="row shot-row">
+            <span class="mark-icon camera" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M9.2 5h1.05l.9-1.2h1.7l.9 1.2H14.8A2.2 2.2 0 0 1 17 7.2v9.6A2.2 2.2 0 0 1 14.8 19H9.2A2.2 2.2 0 0 1 7 16.8V7.2A2.2 2.2 0 0 1 9.2 5ZM12 9.1a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8Zm0 1.6a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6Z"/></svg>
+            </span>
+            <div class="info">
+              <div class="name">Screenshot</div>
+              <div class="sub">Laptop screen</div>
+            </div>
+            <button class="mini-btn" id="screenshotBtn" type="button">Capture</button>
+          </div>
+          <img id="preview" class="preview" alt="Laptop screenshot" />
         </div>
-        <img id="preview" class="preview" alt="Laptop screenshot" />
 
         <div class="group-title">Power</div>
         <div class="card">
           <button class="row" type="button" data-power="sleep">
             <span class="dot blue"></span>
             <div class="info"><div class="name">Sleep</div><div class="sub">Suspend now</div></div>
-            <span class="sw"></span>
+            <span class="chev" aria-hidden="true"></span>
           </button>
           <button class="row" type="button" data-power="lock">
             <span class="dot purple"></span>
             <div class="info"><div class="name">Lock</div><div class="sub">Lock the workstation</div></div>
-            <span class="sw"></span>
+            <span class="chev" aria-hidden="true"></span>
           </button>
           <button class="row" type="button" data-power="restart" data-confirm="Restart the laptop? Open apps may close.">
             <span class="dot orange"></span>
             <div class="info"><div class="name">Restart</div><div class="sub">Reboot the laptop</div></div>
-            <span class="sw"></span>
+            <span class="chev" aria-hidden="true"></span>
           </button>
           <button class="row danger" type="button" data-power="shutdown" data-confirm="Shut down the laptop? You will not be able to start it from this page.">
             <span class="dot red"></span>
             <div class="info"><div class="name">Shut Down</div><div class="sub">Power off completely</div></div>
-            <span class="sw"></span>
+            <span class="chev" aria-hidden="true"></span>
           </button>
         </div>
 
@@ -532,8 +559,12 @@
     }
 
     async function loadScreenshot() {
-      const sw = document.getElementById("shotSw");
-      setSw(sw, true);
+      const btn = document.getElementById("screenshotBtn");
+      if (btn.disabled) {
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = "Capturing…";
       message.textContent = "Capturing…";
       try {
         const blob = await fetchBinary("/media/screenshot");
@@ -549,7 +580,8 @@
       } catch (error) {
         message.textContent = error.message;
       } finally {
-        setTimeout(() => setSw(sw, false), 600);
+        btn.disabled = false;
+        btn.textContent = "Capture";
       }
     }
 
@@ -892,26 +924,19 @@
     }
 
     async function power(command, btn) {
-      const row = btn.closest(".row");
-      const sw = row ? row.querySelector(".sw") : null;
+      const row = btn.closest(".row") || btn;
       const confirmText = btn.dataset.confirm;
       if (confirmText && !confirm(confirmText)) {
         return;
       }
-      if (sw) {
-        setSw(sw, true);
-      }
+      row.classList.add("busy");
       try {
         const result = await request("/power/" + command, { method: "POST", body: "{}" });
         message.textContent = result.message;
       } catch (error) {
         message.textContent = error.message;
       } finally {
-        setTimeout(() => {
-          if (sw) {
-            setSw(sw, false);
-          }
-        }, 800);
+        setTimeout(() => row.classList.remove("busy"), 800);
       }
     }
 
@@ -933,7 +958,7 @@
         message.textContent = error.message;
       }
     });
-    document.getElementById("screenshotRow").addEventListener("click", () => {
+    document.getElementById("screenshotBtn").addEventListener("click", () => {
       void loadScreenshot();
     });
     document.getElementById("logout").addEventListener("click", () => {

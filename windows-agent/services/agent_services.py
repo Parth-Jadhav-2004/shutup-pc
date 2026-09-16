@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import socket
 import subprocess
 import threading
@@ -17,6 +18,12 @@ WEBUI_DIR = Path(r"C:\Users\parth\hermes-webui")
 GATEWAY_VBS = HERMES_HOME / "gateway-service" / "Hermes_Gateway.vbs"
 GATEWAY_STATE = HERMES_HOME / "gateway_state.json"
 CINEVAULT_DIR = Path(r"D:\CineVault\server")
+DSH_DIR = Path(r"D:\deepseek-harness")
+DSH_BIN = DSH_DIR / "apps" / "cli" / "lib" / "bin.js"
+DSH_PORT = 3080
+DSH_NODE_CANDIDATES = [
+    Path(r"C:\Users\parth\AppData\Local\hermes\node\node.exe"),
+]
 THROTTLE_EXES = [
     Path(r"C:\Users\parth\AppData\Local\Programs\Throttle\Throttle.exe"),
     Path(r"D:\Throttle\dist\win-unpacked\Throttle.exe"),
@@ -64,6 +71,14 @@ KNOWN_SERVICES = [
         "description": "Agent web UI",
         "port": 8787,
         "logo": "/assets/services/hermes.png",
+        "controllable": True,
+    },
+    {
+        "id": "deepseek-harness",
+        "name": "DeepSeek Harness",
+        "description": "DeepSeek agent web UI",
+        "port": DSH_PORT,
+        "logo": "/assets/services/deepseek.svg",
         "controllable": True,
     },
 ]
@@ -131,6 +146,43 @@ def _webui_pids() -> list[int]:
     if pid and pid not in found:
         found.append(pid)
     return found
+
+
+def _is_dsh_web(cmdline: str) -> bool:
+    lowered = cmdline.replace("/", "\\").lower()
+    tokens = lowered.replace('"', "").split()
+    has_web = "web" in tokens
+    if not has_web and "--profile" in tokens:
+        idx = tokens.index("--profile")
+        has_web = idx + 1 < len(tokens) and tokens[idx + 1] == "web"
+    if not has_web:
+        return False
+    if "deepseek-harness" in lowered and "bin.js" in lowered:
+        return True
+    return "@deepseek-ai\\dsh" in lowered
+
+
+def _dsh_pids() -> list[int]:
+    found: list[int] = []
+    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+        try:
+            cmdline = " ".join(proc.info.get("cmdline") or [])
+            if _is_dsh_web(cmdline):
+                found.append(int(proc.info["pid"]))
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    pid = _listener_pid(DSH_PORT)
+    if pid and pid not in found:
+        found.append(pid)
+    return found
+
+
+def _dsh_node() -> Path | None:
+    for path in DSH_NODE_CANDIDATES:
+        if path.exists():
+            return path
+    found = shutil.which("node")
+    return Path(found) if found else None
 
 
 def _cinevault_port() -> int:
@@ -297,6 +349,13 @@ class AgentServices:
             if pids:
                 return True, pids[0], {"detail": "process alive, port not reachable"}
             return False, None, {}
+        if service_id == "deepseek-harness":
+            pids = _dsh_pids()
+            if port is not None and _port_open(port):
+                return True, _listener_pid(port) or (pids[0] if pids else None), {}
+            if pids:
+                return True, pids[0], {"detail": "process alive, port not reachable"}
+            return False, None, {}
         if port is not None:
             if _port_open(port):
                 return True, _listener_pid(port), {}
@@ -328,6 +387,8 @@ class AgentServices:
             return self._start_gateway()
         if service_id == "hermes-webui":
             return self._start_webui()
+        if service_id == "deepseek-harness":
+            return self._start_dsh()
         raise ValueError(f"Service '{service_id}' cannot be started")
 
     def stop(self, service_id: str) -> dict:
@@ -358,6 +419,12 @@ class AgentServices:
                 return {"success": True, "message": "Hermes WebUI is already stopped"}
             count = _terminate_pids(pids)
             return {"success": True, "message": f"Hermes WebUI stopped ({count} process(es))"}
+        if service_id == "deepseek-harness":
+            pids = _dsh_pids()
+            if not pids:
+                return {"success": True, "message": "DeepSeek Harness is already stopped"}
+            count = _terminate_pids(pids)
+            return {"success": True, "message": f"DeepSeek Harness stopped ({count} process(es))"}
         raise ValueError(f"Service '{service_id}' cannot be stopped")
 
     def toggle(self, service_id: str) -> dict:
@@ -471,3 +538,14 @@ class AgentServices:
             close_fds=True,
         )
         return {"success": True, "message": "Hermes WebUI start requested"}
+
+    def _start_dsh(self) -> dict:
+        if _port_open(DSH_PORT) or _dsh_pids():
+            return {"success": True, "message": "DeepSeek Harness is already running"}
+        if not DSH_BIN.exists():
+            raise RuntimeError(f"DeepSeek Harness CLI not found: {DSH_BIN}")
+        node = _dsh_node()
+        if not node:
+            raise RuntimeError("Node.js was not found")
+        _spawn([str(node), str(DSH_BIN), "web", "--port", str(DSH_PORT)], DSH_DIR)
+        return {"success": True, "message": "DeepSeek Harness start requested"}
